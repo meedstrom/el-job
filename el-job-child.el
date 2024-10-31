@@ -25,7 +25,7 @@
 
 (defun el-job-child--zip (alist1 alist2)
   "Zip two alists into one, destructively.
-Like the Dash expression \(-zip-with #'nconc list1 list2).
+Like the Dash expression \(-zip-with #\\='nconc list1 list2).
 
 ALIST1 and ALIST2 must have the same length,
 and each element must be a proper list or nil."

@@ -17,8 +17,8 @@
 
 ;; Author:           Martin Edström <meedstrom91@gmail.com>
 ;; Created:          2024-10-30
-;; Keywords:         processes
 ;; URL:              https://github.com/meedstrom/el-job
+;; Keywords:         processes
 ;; Package-Requires: ((emacs "28.1") (compat "30"))
 
 ;;; Commentary:
@@ -133,7 +133,7 @@ Note: if you are currently editing the source code for FEATURE, use
              ;; up until the point the developer actually evals the .el buffer.
              loaded))
      (setf (alist-get feature el-job--feature-mem) blessed)
-     ;; Expire memoization in 3 seconds
+     ;; Expire memoization in 3 seconds - enough to be useful during a launch.
      (run-with-timer 3 () (lambda ()
                             (assq-delete-all feature el-job--feature-mem)))
      blessed)))
@@ -222,7 +222,8 @@ each element is wrapped in its own list."
     (delq nil result)))
 
 (defvar el-job-force-cores nil
-  "Max simultaneous processes for a given batch of jobs.")
+  "Explicit default for `el-job--cores'.
+If non-nil, use this value instead of attempting to count CPU cores.")
 
 (defvar el-job--cores nil
   "Max simultaneous processes for a given batch of jobs.")
@@ -279,8 +280,7 @@ See `el-job-child--zip' for details."
                               lock
                               ;; use-file-handlers
                               debug ;; TODO
-                              max-cores ;; TODO
-                              )
+                              max-children)
   "Run FUNCALL in one or more headless Elisp processes.
 Then merge the return values \(lists of N lists) into one list
 \(of N lists) and pass it to WRAPUP.
@@ -359,8 +359,7 @@ child before it loads anything else."
       (setq el-job--cores el-job-force-cores)
     (unless el-job--cores
       (setq el-job--cores (el-job--count-logical-cores))))
-  (let ((n-jobs (or max-cores el-job--cores))
-        batch stop )
+  (let ( batch stop )
     (if lock
         (if (setq batch (gethash lock el-job--batches))
             (if (seq-some #'process-live-p (el-job-processes batch))
@@ -396,7 +395,7 @@ child before it loads anything else."
       (with-current-buffer (get-buffer-create (el-job-stderr batch) t)
         (erase-buffer))
       (let* ((splits (el-job--split-optimally inputs
-                                              max-cores
+                                              (or max-children el-job--cores)
                                               (el-job-elapsed-table batch)))
              (n (if splits (length splits) 1))
              (inject-vars-alist
@@ -461,12 +460,13 @@ child before it loads anything else."
         (plist-put (el-job-timestamps batch)
                    :launched-children (time-convert nil t)))
       ;; A big use-case for synchronous execution: return the results directly
-      ;; to the caller, without having to leave the call stack.  It is still
-      ;; multi-core, so should be faster than a normal funcall.
+      ;; to the caller.  It is still multi-core, so should be faster than a
+      ;; normal funcall.
       (when await-max
-        (when (eshell-wait-for-processes (el-job-processes batch) await-max)
-          (setf (el-job-inhibit-wrapup batch) t)
-          (el-job--zip-all (el-job-results batch))))))))
+        (setf (el-job-inhibit-wrapup batch) t)
+        (if (eshell-wait-for-processes (el-job-processes batch) await-max)
+            (el-job-results batch)
+          (setf (el-job-inhibit-wrapup batch) nil)))))))
 
 ;; TODO: Sanitize after error
 (defun el-job--handle-finished (proc batch n &optional wrapup)
