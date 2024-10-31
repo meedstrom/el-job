@@ -33,7 +33,7 @@ and each element must be a proper list or nil."
     (while alist1
       (push (nconc (pop alist1) (pop alist2))
             merged))
-    (cl-assert (null alist2))
+    (when alist2 (error "Lists differed in length"))
     (nreverse merged)))
 
 (defun el-job-child--work (func items)

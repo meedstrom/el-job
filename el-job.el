@@ -200,7 +200,7 @@ being saddled with a mega-item in addition to the average workload."
                   ;; REVIEW: Code never ends up here, right?
                   (progn
                     (setq sublists (el-job--split-evenly untimed n))
-                    (message "el-job: Unexpected code path. Not fatal, but report appreciated"))
+                    (message "%s" "el-job: Unexpected code path. Not fatal, but report appreciated"))
                 (dolist (item (nconc untimed items))
                   (push item (nth (% (cl-incf ctr) len) sublists))))))
           sublists)))))
@@ -468,7 +468,7 @@ child before it loads anything else."
             (el-job-results batch)
           (setf (el-job-inhibit-wrapup batch) nil)))))))
 
-;; TODO: Sanitize after error
+;; TODO: Sanitize/cleanup after error
 (defun el-job--handle-finished (proc batch n &optional wrapup)
   "If PROC has exited, record its output in object BATCH.
 
@@ -476,9 +476,9 @@ Each batch-job is expected to call this a total of N times; if this is
 the Nth call, then call function WRAPUP and pass it the merged outputs."
   (cond
    ((not (eq 'exit (process-status proc)))
-    (message "Process event said \"finished\" but process status is not `exit'"))
+    (message "%s" "Process said \"finished\" but process status is not `exit'"))
    ((/= 0 (process-exit-status proc))
-    (message "Nonzero exit status"))
+    (message "%s" "Nonzero exit status"))
    (t
     (unless (<= 48 (string-to-char (substring (process-name proc) -1))
                 57)
