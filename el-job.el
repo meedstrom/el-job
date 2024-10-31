@@ -354,6 +354,7 @@ child before it loads anything else."
         (if (setq batch (gethash lock el-job--batches))
             (if (seq-some #'process-live-p (el-job-processes batch))
                 (setq stop (message "el-job: Batch %s still at work"))
+              (mapc #'delete-process (el-job-processes batch))
               (setf (el-job-processes batch) nil)
               (setf (el-job-inputs batch) nil)
               (setf (el-job-results batch) nil)
