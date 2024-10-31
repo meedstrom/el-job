@@ -18,10 +18,20 @@
 ;; Author:           Martin Edström <meedstrom91@gmail.com>
 ;; Created:          2024-10-30
 ;; Keywords:         processes
-;; Package-Requires: ((emacs "28.1") (compat "30"))
 ;; URL:              https://github.com/meedstrom/el-job
+;; Package-Requires: ((emacs "28.1") (compat "30"))
 
 ;;; Commentary:
+
+;; Imagine you have a function you'd like to run on a long list of inputs.  You
+;; could run (mapcar #'FN INPUTS), but that hangs Emacs until done.
+
+;; This library gives you the tools to split up the inputs and run the function
+;; in many subprocesses (one per CPU core), then merges their outputs and
+;; passes it back to the current Emacs.  In the meantime, current Emacs does
+;; not hang at all.
+
+;; The only public API is the function `el-job-launch'.
 
 ;;; Code:
 
@@ -29,6 +39,7 @@
 (require 'esh-proc)
 (require 'compat)
 (require 'el-job-child)
+(declare-function eshell-wait-for-processes "esh-proc")
 
 ;;; Subroutines:
 
@@ -210,9 +221,8 @@ each element is wrapped in its own list."
         (setq big-list (nthcdr sublist-length big-list))))
     (delq nil result)))
 
-(defcustom el-job-cores nil
-  "Max simultaneous processes for a given batch of jobs."
-  :type '(choice integer (const nil)))
+(defvar el-job-force-cores nil
+  "Max simultaneous processes for a given batch of jobs.")
 
 (defvar el-job--cores nil
   "Max simultaneous processes for a given batch of jobs.")
@@ -269,7 +279,7 @@ See `el-job-child--zip' for details."
                               lock
                               ;; use-file-handlers
                               debug ;; TODO
-                              max-jobs ;; TODO
+                              max-cores ;; TODO
                               )
   "Run FUNCALL in one or more headless Elisp processes.
 Then merge the return values \(lists of N lists) into one list
@@ -345,11 +355,12 @@ child before it loads anything else."
   (unless (symbolp funcall)
     (error "Argument :funcall only takes a symbol"))
   (setq load (ensure-list load))
-  (if el-job-cores
-      (setq el-job--cores el-job-cores)
+  (if el-job-force-cores
+      (setq el-job--cores el-job-force-cores)
     (unless el-job--cores
       (setq el-job--cores (el-job--count-logical-cores))))
-  (let (batch stop)
+  (let ((n-jobs (or max-cores el-job--cores))
+        batch stop )
     (if lock
         (if (setq batch (gethash lock el-job--batches))
             (if (seq-some #'process-live-p (el-job-processes batch))
@@ -384,10 +395,9 @@ child before it loads anything else."
      (t
       (with-current-buffer (get-buffer-create (el-job-stderr batch) t)
         (erase-buffer))
-      (let* ((splits
-              (el-job--split-optimally inputs
-                                       el-job--cores
-                                       (el-job-elapsed-table batch)))
+      (let* ((splits (el-job--split-optimally inputs
+                                              max-cores
+                                              (el-job-elapsed-table batch)))
              (n (if splits (length splits) 1))
              (inject-vars-alist
               (cons (cons 'current-time-list current-time-list)
