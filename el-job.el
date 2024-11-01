@@ -41,6 +41,12 @@
 (require 'el-job-child)
 (declare-function eshell-wait-for-processes "esh-proc")
 
+;; FIXME: "vfork argument list too long", when :inject-vars massive.
+;;        Probably need to refactor to use `process-send-string'.
+;;        Wonder if PTY works better than pipe in this regard?
+
+;; TODO: Want a method to keep children alive and skip spin-up.
+
 ;;; Subroutines:
 
 (defvar el-job--feature-mem nil)
@@ -321,7 +327,7 @@ subprocess.
 
 Due to the absence of `load-path', be careful writing `require'
 statements into that Emacs Lisp file.  You can pass `load-path' via
-INJECT-VARS, but consider that less requires means faster spin-up.
+INJECT-VARS, but consider that fewer dependencies means faster spin-up.
 
 
 INPUTS is a list that will be split by up to the number
@@ -408,14 +414,15 @@ evaluated many times."
                       (current-buffer))))
              print-length
              print-level
+             (print-circle t)
+             (print-symbols-bare t)
              (inject-vars-alist
-              (cons (cons 'current-time-list current-time-list)
-                    ;; TODO: Reuse allocated memory instead of building a new
-                    ;; list since the values could possibly be huge.
-                    (cl-loop
-                     for var in inject-vars
-                     if (symbolp var) collect (cons var (symbol-value var))
-                     else collect var)))
+              ;; TODO: Reuse allocated memory instead of building a new
+              ;; list since the values could possibly be huge.
+              (cl-loop
+               for var in inject-vars
+               if (symbolp var) collect (cons var (symbol-value var))
+               else collect var))
              (inject-vars-expr (prin1-to-string
                                 `(dolist (var ',inject-vars-alist)
                                    (set (car var) (cdr var)))))
@@ -450,9 +457,11 @@ evaluated many times."
                   (if eval-once (list "--eval" eval-once))
                   (list
                    "--load" (el-job--find-lib 'el-job-child)
-                   "--eval" (format "(el-job-child--work #'%S '%s)"
-                                    funcall
-                                    (prin1-to-string items))))
+                   "--eval" (if items
+                                (format "(el-job-child--work #'%S)" funcall)
+                              (format "(el-job-child--work #'%S '%s)"
+                                      funcall
+                                      (prin1-to-string items)))))
                  :sentinel
                  (lambda (proc event)
                    (pcase event

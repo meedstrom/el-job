@@ -35,20 +35,22 @@ and each element must be a proper list or nil."
     (when alist2 (error "Lists differed in length"))
     (nreverse merged)))
 
-(defun el-job-child--work (func items)
+(defun el-job-child--work (func &optional items)
   "Run FUNC on one of ITEMS at a time.
 FUNC comes from :funcall argument of `org-node-job-launch'.
 
 Benchmark how long FUNC took to handle each item, and add that
 information to the final return value."
   (let (item start output meta results)
-    (while items
-      (setq item (pop items))
-      (setq start (time-convert nil t))
-      (setq output (funcall func item))
-      (push (time-since start) meta)
-      ;; May affect the durations erratically, so do this step after.
-      (setq results (el-job-child--zip output results)))
+    (if items
+        (while items
+          (setq item (pop items))
+          (setq start (time-convert nil t))
+          (setq output (funcall func item))
+          (push (time-since start) meta)
+          ;; May affect the durations erratically, so do this step after.
+          (setq results (el-job-child--zip output results)))
+      (funcall func))
     ;; Ensure durations are in same order that ITEMS came in, letting us
     ;; associate which with which just by index.
     (setq meta (nreverse meta))
