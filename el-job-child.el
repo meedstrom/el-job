@@ -16,12 +16,11 @@
 
 ;;; Commentary:
 
-;;; Code:
+;; We use `time-convert' instead of `current-time' because
+;; 1. (TICKS . HZ) implies a bit less GC churn than (HIGH LOW USEC PSEC)
+;; 2. With `current-time', we would have to inject `current-time-list'
 
-;; We call `time-convert' instead of `current-time' because the child process
-;; may have a different setting of `current-time-list' ...
-;; But we could just inject that...
-;; But also, (TICKS . HZ) implies a bit less garbage than (HIGH LOW USEC PSEC).
+;;; Code:
 
 (defun el-job-child--zip (alist1 alist2)
   "Zip two alists into one, destructively.
@@ -48,10 +47,12 @@ information to the final return value."
       (setq start (time-convert nil t))
       (setq output (funcall func item))
       (push (time-since start) meta)
+      ;; May affect the durations erratically, so do this step after.
       (setq results (el-job-child--zip output results)))
-    ;; Now the durations are in same order that ITEMS came in
+    ;; Ensure durations are in same order that ITEMS came in, letting us
+    ;; associate which with which just by index.
     (setq meta (nreverse meta))
-    ;; This will be the very `car' of the metadata
+    ;; Timestamp at finish.  Will be the very `car' of the metadata.
     (push (time-convert nil t) meta)
     (let (print-length
           print-level

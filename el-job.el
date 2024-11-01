@@ -44,9 +44,9 @@
 ;;; Subroutines:
 
 (defvar el-job--feature-mem nil)
-(defun el-job--loaded-lib (feature)
+(defun el-job--find-lib (feature)
   "Look for .eln, .elc or .el file corresponding to FEATURE.
-FEATURE is a symbol as it shows up in `load'.
+FEATURE is a symbol as it shows up in `features'.
 
 Guess which one was in fact loaded by the current Emacs,
 and return it if it is .elc or .eln.
@@ -141,9 +141,10 @@ Note: if you are currently editing the source code for FEATURE, use
 (defun el-job--split-optimally (items n table)
   "Split ITEMS into N lists of items.
 
-Inspect TABLE for how long a batch took to execute on a given item last
-time, to return balanced lists that should each take around the same
-total wall-time to process.
+Assuming TABLE has benchmarks for how long this job took last time to
+execute on a given item, use the benchmarks to rebalance the lists so
+that each list should take around the same total wall-time to work
+through this time.
 
 This reduces the risk that one subprocess takes noticably longer due to
 being saddled with a mega-item in addition to the average workload."
@@ -221,9 +222,9 @@ each element is wrapped in its own list."
         (setq big-list (nthcdr sublist-length big-list))))
     (delq nil result)))
 
-(defvar el-job-force-cores nil
+(defvar el-job--force-cores nil
   "Explicit default for `el-job--cores'.
-If non-nil, use this value instead of attempting to count CPU cores.")
+If set, use this value instead of attempting to count CPU cores.")
 
 (defvar el-job--cores nil
   "Max simultaneous processes for a given batch of jobs.")
@@ -277,9 +278,9 @@ See `el-job-child--zip' for details."
                               funcall
                               inputs
                               wrapup
-                              await-max
+                              await
                               lock
-                              max-children ;; will deprecate
+                              max-children ;; may deprecate
                               ;; TODO
                               ;;  use-file-handlers
                               debug)
@@ -315,7 +316,7 @@ file; that file should end with a `provide' call to the same feature.
 
 While subprocesses do not inherit `load-path', it is the mother Emacs
 process that locates that file \(by inspecting `load-history', see
-`el-job--loaded-lib' for particulars), then gives the file to the
+`el-job--find-lib' for particulars), then gives the file to the
 subprocess.
 
 Due to the absence of `load-path', be careful writing `require'
@@ -323,9 +324,9 @@ statements into that Emacs Lisp file.  You can pass `load-path' via
 INJECT-VARS, but consider that less requires means faster spin-up.
 
 
-SPLITABLE-DATA is a list that will be split by up to the number
+INPUTS is a list that will be split by up to the number
 of CPU cores on your machine, and this determines how many
-subprocesses will spawn.  If SPLITABLE-DATA is nil, only
+subprocesses will spawn.  If INPUTS is nil, only
 one subprocess will spawn.
 
 The subprocesses have no access to current Emacs state.  The only way
@@ -335,14 +336,14 @@ handled by WRAPUP function in the current Emacs.
 Emacs stays responsive to user input up until all subprocesses finish,
 which is when their results are merged and WRAPUP is executed.  If you
 prefer Emacs to freeze and wait for this momentous event, set
-AWAIT-MAX to a number of seconds.
+AWAIT to a number of seconds to wait at most.
 
-If all children finish before AWAIT-MAX, then the return value is the
+If all children finish before AWAIT, then the return value is the
 same list of results that would have been passed to WRAPUP, and WRAPUP
 is not executed.  Otherwise, the return value is nil.
 
 WRAPUP receives two arguments: the results as mentioned before, and the
-job batch metadata.  The latter is mainly useful to check timestamps,
+job batch object.  The latter is mainly useful to check timestamps,
 which you can get from this form:
 
     \(el-job-timestamps JOB)
@@ -351,7 +352,7 @@ which you can get from this form:
 LOCK is a symbol identifying this batch of jobs, and prevents launching
 another batch with the same LOCK if the previous batch has not
 completed.  It can also be a keyword or an integer below 536,870,911
-(suitable for `eq').
+\(suitable for `eq').
 
 EVAL-ONCE is a string containing a Lisp form.  It is evaluated in the
 child just before FUNCALL, but only once, even though FUNCALL may be
@@ -359,8 +360,8 @@ evaluated many times."
   (unless (symbolp funcall)
     (error "Argument :funcall only takes a symbol"))
   (setq load (ensure-list load))
-  (if el-job-force-cores
-      (setq el-job--cores el-job-force-cores)
+  (if el-job--force-cores
+      (setq el-job--cores el-job--force-cores)
     (unless el-job--cores
       (setq el-job--cores (el-job--count-logical-cores))))
   (let ( batch stop )
@@ -380,6 +381,7 @@ evaluated many times."
                 (puthash lock (el-job-batch-make :lock lock)
                          el-job--batches)))
       ;; TODO: Do not benchmark inputs for anonymous job
+      ;;       or when ... another keyword :skip-benchmark t?
       (setq batch (el-job-batch-make)))
     (cond
      (stop)
@@ -441,13 +443,13 @@ evaluated many times."
                    (file-name-concat invocation-directory invocation-name)
                    "--quick"
                    "--batch")
-                  (cl-loop
-                   for file in (mapcar #'el-job--loaded-lib load)
-                   nconc (list "--load" file))
                   (if inject-vars (list "--eval" inject-vars-expr))
+                  (cl-loop
+                   for file in (mapcar #'el-job--find-lib load)
+                   nconc (list "--load" file))
                   (if eval-once (list "--eval" eval-once))
                   (list
-                   "--load" (el-job--loaded-lib 'el-job-child)
+                   "--load" (el-job--find-lib 'el-job-child)
                    "--eval" (format "(el-job-child--work #'%S '%s)"
                                     funcall
                                     (prin1-to-string items))))
@@ -466,9 +468,9 @@ evaluated many times."
       ;; A big use-case for synchronous execution: return the results directly
       ;; to the caller.  It is still multi-core, so should be faster than a
       ;; normal funcall.
-      (when await-max
+      (when await
         (setf (el-job-inhibit-wrapup batch) t)
-        (if (eshell-wait-for-processes (el-job-processes batch) await-max)
+        (if (eshell-wait-for-processes (el-job-processes batch) await)
             (el-job-results batch)
           (setf (el-job-inhibit-wrapup batch) nil)))))))
 
