@@ -47,21 +47,17 @@ information to the final return value."
       (setq item (pop items))
       (setq start (time-convert nil t))
       (setq output (funcall func item))
-      ;; Afraid that looping `time-add' would be slower than summing floats. Benchmark that?
-      ;; Actually--
-      ;; (push (float-time (time-since start)) meta)
-      ;; now this is still (TIME . HZ):
       (push (time-since start) meta)
       (setq results (el-job-child--zip output results)))
     ;; Now the durations are in same order that ITEMS came in
     (setq meta (nreverse meta))
     ;; This will be the very `car' of the metadata
     (push (time-convert nil t) meta)
-    (prin1 (cons meta results)
-           nil
-           ;; TODO: Consider print-circle to shrink data transmitted
-           ;; TODO: Consider print-symbols-bare
-           '((length) (level) (circle . t)))))
+    (let (print-length
+          print-level
+          (print-circle t)
+          (print-symbols-bare t))
+      (prin1 (cons meta results)))))
 
 (provide 'el-job-child)
 

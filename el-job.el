@@ -258,7 +258,7 @@ See `el-job-child--zip' for details."
 ;;; Main logic:
 
 (defvar el-job--batches (make-hash-table :test #'eq))
-(cl-defstruct (el-job-batch (:constructor el-job-make-batch)
+(cl-defstruct (el-job-batch (:constructor el-job-batch-make)
                             (:copier nil)
                             (:conc-name el-job-))
   lock
@@ -270,17 +270,19 @@ See `el-job-child--zip' for details."
   (timestamps (list :accept-launch-request (time-convert nil t)))
   (elapsed-table (make-hash-table :test #'equal)))
 
-(cl-defun el-job-launch (&key early-eval
-                              load
+;; TODO: How to share the same elapsed-table, without locking?
+(cl-defun el-job-launch (&key load
                               inject-vars
+                              eval-once
                               funcall
                               inputs
                               wrapup
                               await-max
                               lock
-                              ;; use-file-handlers
-                              debug ;; TODO
-                              max-children)
+                              max-children ;; will deprecate
+                              ;; TODO
+                              ;;  use-file-handlers
+                              debug)
   "Run FUNCALL in one or more headless Elisp processes.
 Then merge the return values \(lists of N lists) into one list
 \(of N lists) and pass it to WRAPUP.
@@ -346,12 +348,14 @@ which you can get from this form:
     \(el-job-timestamps JOB)
 
 
-LOCK is a symbol or integer (anything suitable for `eq')
-identifying this batch of jobs, and prevents launching another batch
-with the same LOCK if the previous batch has not completed.
+LOCK is a symbol identifying this batch of jobs, and prevents launching
+another batch with the same LOCK if the previous batch has not
+completed.  It can also be a keyword or an integer below 536,870,911
+(suitable for `eq').
 
-EARLY-EVAL is a string containing a Lisp form.  It is evaluated in the
-child before it loads anything else."
+EVAL-ONCE is a string containing a Lisp form.  It is evaluated in the
+child just before FUNCALL, but only once, even though FUNCALL may be
+evaluated many times."
   (unless (symbolp funcall)
     (error "Argument :funcall only takes a symbol"))
   (setq load (ensure-list load))
@@ -365,23 +369,18 @@ child before it loads anything else."
             (if (seq-some #'process-live-p (el-job-processes batch))
                 (setq stop (message "el-job: Batch %s still at work"))
               (mapc #'delete-process (el-job-processes batch))
-              (setf (el-job-processes batch) nil)
-              (setf (el-job-inputs batch) nil)
-              (setf (el-job-results batch) nil)
+              (setf (el-job-processes batch)      nil)
+              (setf (el-job-inputs batch)         nil)
+              (setf (el-job-results batch)        nil)
               (setf (el-job-inhibit-wrapup batch) nil)
+              (setf (el-job-lock batch)           lock)
               (setf (el-job-timestamps batch)
                     (list :accept-launch-request (time-convert nil t))))
           (setq batch
-                (puthash lock
-                         (el-job-make-batch
-                          :lock lock
-                          :stderr (format " *el-job-%s:err*" lock))
+                (puthash lock (el-job-batch-make :lock lock)
                          el-job--batches)))
-      ;; Anonymous batch needs buffer names that will never be reused.
-      (setq lock (intern (format-time-string "%FT%H%M%S%N")))
-      (setq batch (el-job-make-batch
-                   :lock lock
-                   :stderr (format " *el-job-%s:err*" lock))))
+      ;; TODO: Do not benchmark inputs for anonymous job
+      (setq batch (el-job-batch-make)))
     (cond
      (stop)
 
@@ -392,12 +391,21 @@ child before it loads anything else."
      (debug)
 
      (t
-      (with-current-buffer (get-buffer-create (el-job-stderr batch) t)
-        (erase-buffer))
+
       (let* ((splits (el-job--split-optimally inputs
                                               (or max-children el-job--cores)
                                               (el-job-elapsed-table batch)))
              (n (if splits (length splits) 1))
+             ;; Anonymous batch needs buffer names that will never be reused
+             (name (or lock (format-time-string "%FT%H%M%S%N")))
+             (shared-stderr
+              (setf (el-job-stderr batch)
+                    (with-current-buffer
+                        (get-buffer-create (format " *el-job-%s:err*" name) t)
+                      (erase-buffer)
+                      (current-buffer))))
+             print-length
+             print-level
              (inject-vars-alist
               (cons (cons 'current-time-list current-time-list)
                     ;; TODO: Reuse allocated memory instead of building a new
@@ -406,6 +414,9 @@ child before it loads anything else."
                      for var in inject-vars
                      if (symbolp var) collect (cons var (symbol-value var))
                      else collect var)))
+             (inject-vars-expr (prin1-to-string
+                                `(dolist (var ',inject-vars-alist)
+                                   (set (car var) (cdr var)))))
              ;; Ensure the working directory is not remote (messes things up)
              (default-directory invocation-directory)
              items proc)
@@ -413,14 +424,14 @@ child before it loads anything else."
           (setq items (pop splits))
           (setq proc
                 (make-process
-                 :name (format "el-job-%s:%d" lock i)
+                 :name (format "el-job-%s:%d" name i)
                  :noquery t
                  ;; Pipe is the fallback on environments that don't support
                  ;; PTY, so I'll force pipe for now to reveal any footguns
                  :connection-type 'pipe
-                 :stderr (get-buffer (el-job-stderr batch))
+                 :stderr shared-stderr
                  :buffer (with-current-buffer (get-buffer-create
-                                               (format " *el-job-%s:%d*" lock i)
+                                               (format " *el-job-%s:%d*" name i)
                                                t)
                            (erase-buffer)
                            (current-buffer))
@@ -430,23 +441,16 @@ child before it loads anything else."
                    (file-name-concat invocation-directory invocation-name)
                    "--quick"
                    "--batch")
-                  (if early-eval (list "--eval" early-eval))
                   (cl-loop
                    for file in (mapcar #'el-job--loaded-lib load)
                    nconc (list "--load" file))
-                  (if inject-vars
-                      (list "--eval"
-                            (prin1-to-string
-                             `(dolist (var ',inject-vars-alist)
-                                (set (car var) (cdr var)))
-                             nil
-                             '((length) (level)))))
+                  (if inject-vars (list "--eval" inject-vars-expr))
+                  (if eval-once (list "--eval" eval-once))
                   (list
                    "--load" (el-job--loaded-lib 'el-job-child)
                    "--eval" (format "(el-job-child--work #'%S '%s)"
                                     funcall
-                                    (prin1-to-string
-                                     items nil '((length) (level))))))
+                                    (prin1-to-string items))))
                  :sentinel
                  (lambda (proc event)
                    (pcase event
@@ -492,21 +496,23 @@ the Nth call, then call function WRAPUP and pass it the merged outputs."
           (( error )
            (error "Problems reading el-job child output: %S" err))
           (:success
-           (let ((durations (cdar output))
-                 (input (alist-get proc (el-job-inputs batch))))
+           (when (el-job-lock batch)
              ;; Record the time spent by FUNCALL on each item in
-             ;; SPLITABLE-DATA.  Big deal with `el-job--split-optimally'.
-             (dolist (item input)
-               (puthash item
-                        (pop durations)
-                        (el-job-elapsed-table batch))))
-           ;; The `car' was just metadata we slipped in
+             ;; INPUTS, for next time with `el-job--split-optimally'.
+             (let ((durations (cdar output))
+                   (input (alist-get proc (el-job-inputs batch))))
+               (dolist (item input)
+                 (puthash item (pop durations) (el-job-elapsed-table batch)))))
+           ;; The `car' was just our own metadata
            (push (cdr output) (el-job-results batch)))))
       (when (= (length (el-job-results batch)) n)
-        ;; We are in the last process sentinel, so this child's exit-timestamp
-        ;; is the latest one
+        ;; We are in the last process sentinel
         (plist-put (el-job-timestamps batch)
                    :children-done (caar output))
+        (unless (el-job-lock batch)
+          (kill-buffer (el-job-stderr batch))
+          (dolist (proc (el-job-processes batch))
+            (kill-buffer proc)))
         ;; Would be nice if we could timestamp the moment where we /begin/
         ;; accepting results, i.e. the first sentinel, but this may occur
         ;; before the last child has exited, so it would be confusing.  At
