@@ -349,7 +349,7 @@ evaluated many times."
     (if lock
         (if (setq job (gethash lock el-jobs))
             (if (seq-some #'process-live-p (el-job-processes job))
-                (setq stop (message "%s" "el-job: Batch still at work"))
+                (setq stop (message "%s" "el-job: Still at work"))
               (mapc #'el-job--kill-quietly (el-job-processes job))
               (setf (el-job-processes job)      nil)
               (setf (el-job-inputs job)         nil)
@@ -455,9 +455,9 @@ evaluated many times."
 
 ;; TODO: Sanitize/cleanup after error
 (defun el-job--handle-finished (proc job n &optional wrapup)
-  "If PROC has exited, record its output in object BATCH.
+  "If PROC has exited, record its output in object JOB.
 
-Each batch-job is expected to call this a total of N times; if this is
+Each job is expected to call this a total of N times; if this is
 the Nth call, then call function WRAPUP and pass it the merged outputs."
   (cond
    ((not (eq 'exit (process-status proc)))
@@ -507,6 +507,8 @@ the Nth call, then call function WRAPUP and pass it the merged outputs."
           (funcall wrapup (el-job-results job) job)))))))
 
 (defun el-job--kill-quietly (proc)
+  "Delete process PROC and kill its buffer.
+Prevent its sentinel and filter from doing anything as this happens."
   (let ((buf (process-buffer proc)))
     (set-process-filter proc #'ignore)
     (set-process-sentinel proc #'ignore)
@@ -514,6 +516,7 @@ the Nth call, then call function WRAPUP and pass it the merged outputs."
     (delete-process proc)))
 
 (defun el-job--kill-all ()
+  "Kill all jobs."
   (interactive)
   (dolist (buf (match-buffers "^ \\*el-job-"))
     (if-let ((proc (get-buffer-process buf)))
