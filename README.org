@@ -9,20 +9,27 @@ This library gives you the tools to split up the inputs and run the function in 
 
 For real-world usage, search for =el-job-launch= in the source of [[https://github.com/meedstrom/org-node/blob/use-el-job/org-node.el][org-node.el]].
 
+** News
+
+Still in a development honeymoon, so API very unstable.  Check back often!
+
+- [2024-11-02 Sat 10:54]
+  - RENAME
+    - Table =el-job--batches=  -> =el-jobs=
+  - Refactored internally to send input via =process-send-string= instead of constructing a convoluted command line
+    - Fixes vfork error from too long argument list
 
 ** Limitations
 
-1. Still in a development honeymoon, so argument names are not set in stone.  Check back often!
-
-2. For now, some limitations on FN's return value, which must always be a list of a fixed length, where the elements are themselves lists.  For example, at the end of org-node-parser.el, it returns:
+For now, some limitations on FN's return value, which must always be a list of a fixed length, where the elements are themselves lists.  For example, at the end of org-node-parser.el, it returns:
 
    #+begin_src elisp
-       (list (if missing-file (list missing-file))
-             (if file-mtime (list file-mtime))
-             found-nodes ;; always a list
-             org-node-parser--paths-types ;; always a list
-             org-node-parser--found-links ;; always a list
-             (if problem (list problem))))
+   (list (if missing-file (list missing-file))
+         (if file-mtime (list file-mtime))
+         found-nodes ;; always a list
+         org-node-parser--paths-types ;; always a list
+         org-node-parser--found-links ;; always a list
+         (if problem (list problem))))
    #+end_src
 
-   May seem clunky when you return lists of only one item, but at least it is easy to extend.
+May seem clunky when you return lists of only one item, but at least it is easy to extend.
