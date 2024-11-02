@@ -21,7 +21,7 @@ Still in a development honeymoon, so API very unstable.  Check back often!
 
 ** Limitations
 
-For now, some limitations on FN's return value, which must always be a list of a fixed length, where the elements are themselves lists.  For example, at the end of org-node-parser.el, it returns:
+1. For now, some limitations on FN's return value, which must always be a list of a fixed length, where the elements are themselves lists.  For example, at the end of org-node-parser.el, it returns:
 
    #+begin_src elisp
    (list (if missing-file (list missing-file))
@@ -32,4 +32,6 @@ For now, some limitations on FN's return value, which must always be a list of a
          (if problem (list problem))))
    #+end_src
 
-May seem clunky when you return lists of only one item, but at least it is easy to extend.
+   May seem clunky when you return lists of only one item, but at least it is easy to extend.
+
+2. No keepalive: launching a job now just creates subprocesses to do one thing and then die.  This will change so that they can be kept alive to receive more inputs, skipping spin-up time.
