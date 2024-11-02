@@ -41,15 +41,13 @@
 (require 'el-job-child)
 (declare-function eshell-wait-for-processes "esh-proc")
 
-;; FIXME: "vfork argument list too long", when :inject-vars massive.
-;;        Probably need to refactor to use `process-send-string'.
-;;        Wonder if PTY works better than pipe in this regard?
-
 ;; TODO: Want a method to keep children alive and skip spin-up.
+
+;; TODO: Really call wrapup wrapup? Callback? Last-sentinel? Finish-func?
+;;       Handle-done?
 
 ;;; Subroutines:
 
-(defvar el-job--feature-mem nil)
 (defun el-job--find-lib (feature)
   "Look for .eln, .elc or .el file corresponding to FEATURE.
 FEATURE is a symbol as it shows up in `features'.
@@ -63,96 +61,87 @@ compiled file instead.  This returns an .elc on the first call, then an
 
 Note: if you are currently editing the source code for FEATURE, use
 `eval-buffer' and save to ensure this finds the correct file."
-  (or
-   (alist-get feature el-job--feature-mem)
-   (let* ((hit
-           (cl-loop
-            for (file . elems) in load-history
-            when (eq feature (cdr (assq 'provide elems)))
-            return
-            ;; Want two pieces of info: the file path according to
-            ;; `load-history', and some function supposedly defined
-            ;; there.  The function is a better source of info, for
-            ;; discovering an .eln.
-            (cons file (cl-loop
-                        for elem in elems
-                        when (and (consp elem)
-                                  (eq 'defun (car elem))
-                                  (not (consp (symbol-function (cdr elem))))
-                                  (not (function-alias-p (cdr elem))))
-                        return (cdr elem)))))
-          ;; Perf. Not confirmed necessary.
-          ;; TODO: Test if it can compile eln from el.gz with null handlers
-          (file-name-handler-alist '(("\\.gz\\'" . jka-compr-handler)))
-          (loaded (or (and (native-comp-available-p)
-                           (ignore-errors
-                             ;; REVIEW: `symbol-file' uses expand-file-name,
-                             ;;         but I'm not convinced it is needed
-                             (expand-file-name
-                              (native-comp-unit-file
-                               (subr-native-comp-unit
-                                (symbol-function (cdr hit)))))))
-                      (car hit)))
-          blessed)
-     (unless loaded
-       (error "Current Lisp definitions must come from a file %S[.el/.elc/.eln]"
-              feature))
-     ;; HACK: Sometimes comp.el makes freefn- temp files; pretend we found .el.
-     ;;       Bad hack, because load-path is NOT as trustworthy as load-history
-     ;;       (current Emacs may not be using the thing in load-path).
-     (when (string-search "freefn-" loaded)
-       (setq loaded
-             (locate-file (symbol-name feature) load-path '(".el" ".el.gz"))))
-     (setq blessed
-           (if (or (string-suffix-p ".el" loaded)
-                   (string-suffix-p ".el.gz" loaded))
-               (or (when (native-comp-available-p)
-                     ;; If we built an .eln last time, return it now even
-                     ;; though the current Emacs process is still running
-                     ;; interpreted .el.
-                     (comp-lookup-eln loaded))
-                   (let* ((elc (file-name-concat temporary-file-directory
-                                                 (concat (symbol-name feature)
-                                                         ".elc")))
-                          (byte-compile-dest-file-function
-                           `(lambda (&rest _) ,elc)))
-                     (when (native-comp-available-p)
-                       (native-compile-async (list loaded)))
-                     ;; Native comp may take a while, so return .elc this time.
-                     ;; We should not pick an .elc from load path if Emacs is
-                     ;; now running interpreted code, since the currently
-                     ;; running code is likely newer.
-                     (if (or (file-newer-than-file-p elc loaded)
-                             (byte-compile-file loaded))
-                         ;; NOTE: On Guix we should never end up here, but if
-                         ;; we did, that'd be a problem as Guix will probably
-                         ;; reuse the first .elc we ever made forever, even
-                         ;; after upgrades to .el, due to 1970 timestamps.
-                         elc
-                       loaded)))
-             ;; Either .eln or .elc was loaded, so use the same for the
-             ;; children.  We should not opportunistically build an .eln if
-             ;; Emacs had loaded an .elc for the current process, because we
-             ;; cannot assume the source .el is equivalent code.
-             ;; The .el could be in-development, newer than .elc, so
-             ;; children should use the old .elc for compatibility right
-             ;; up until the point the developer actually evals the .el buffer.
-             loaded))
-     (setf (alist-get feature el-job--feature-mem) blessed)
-     ;; Expire memoization in 3 seconds - enough to be useful during a launch.
-     (run-with-timer 3 () (lambda ()
-                            (assq-delete-all feature el-job--feature-mem)))
-     blessed)))
+  (let* ((hit
+          (cl-loop
+           for (file . elems) in load-history
+           when (eq feature (cdr (assq 'provide elems)))
+           return
+           ;; Want two pieces of info: the file path according to
+           ;; `load-history', and some function supposedly defined
+           ;; there.  The function is a better source of info, for
+           ;; discovering an .eln.
+           (cons file (cl-loop
+                       for elem in elems
+                       when (and (consp elem)
+                                 (eq 'defun (car elem))
+                                 (not (consp (symbol-function (cdr elem))))
+                                 (not (function-alias-p (cdr elem))))
+                       return (cdr elem)))))
+         ;; Perf. Not confirmed necessary.
+         ;; TODO: Test if it can compile eln from el.gz with null handlers
+         (file-name-handler-alist '(("\\.gz\\'" . jka-compr-handler)))
+         (loaded (or (and (native-comp-available-p)
+                          (ignore-errors
+                            ;; REVIEW: `symbol-file' uses expand-file-name,
+                            ;;         but I'm not convinced it is needed
+                            (expand-file-name
+                             (native-comp-unit-file
+                              (subr-native-comp-unit
+                               (symbol-function (cdr hit)))))))
+                     (car hit))))
+    (unless loaded
+      (error "Current Lisp definitions must come from a file %S[.el/.elc/.eln]"
+             feature))
+    ;; HACK: Sometimes comp.el makes freefn- temp files; pretend we found .el.
+    ;;       Bad hack, because load-path is NOT as trustworthy as load-history
+    ;;       (current Emacs may not be using the thing in load-path).
+    (when (string-search "freefn-" loaded)
+      (setq loaded
+            (locate-file (symbol-name feature) load-path '(".el" ".el.gz"))))
+    (if (or (string-suffix-p ".el" loaded)
+            (string-suffix-p ".el.gz" loaded))
+        (or (when (native-comp-available-p)
+              ;; If we built an .eln last time, return it now even
+              ;; though the current Emacs process is still running
+              ;; interpreted .el.
+              (comp-lookup-eln loaded))
+            (let* ((elc (file-name-concat temporary-file-directory
+                                          (concat (symbol-name feature)
+                                                  ".elc")))
+                   (byte-compile-dest-file-function
+                    `(lambda (&rest _) ,elc)))
+              (when (native-comp-available-p)
+                (native-compile-async (list loaded)))
+              ;; Native comp may take a while, so return .elc this time.
+              ;; We should not pick an .elc from load path if Emacs is
+              ;; now running interpreted code, since the currently
+              ;; running code is likely newer.
+              (if (or (file-newer-than-file-p elc loaded)
+                      (byte-compile-file loaded))
+                  ;; NOTE: On Guix we should never end up here, but if
+                  ;; we did, that'd be a problem as Guix will probably
+                  ;; reuse the first .elc we ever made forever, even
+                  ;; after upgrades to .el, due to 1970 timestamps.
+                  elc
+                loaded)))
+      ;; Either .eln or .elc was loaded, so use the same for the
+      ;; children.  We should not opportunistically build an .eln if
+      ;; Emacs had loaded an .elc for the current process, because we
+      ;; cannot assume the source .el is equivalent code.
+      ;; The .el could be in-development, newer than .elc, so
+      ;; children should use the old .elc for compatibility right
+      ;; up until the point the developer actually evals the .el buffer.
+      loaded)))
 
 (defun el-job--split-optimally (items n table)
-  "Split ITEMS into N lists of items.
+  "Split ITEMS into up to N lists of items.
 
 Assuming TABLE has benchmarks for how long this job took last time to
 execute on a given item, use the benchmarks to rebalance the lists so
 that each list should take around the same total wall-time to work
 through this time.
 
-This reduces the risk that one subprocess takes noticably longer due to
+This reduces the risk that one child takes noticably longer due to
 being saddled with a mega-item in addition to the average workload."
   (if (<= (length items) n)
       (el-job--split-evenly items n)
@@ -166,8 +155,8 @@ being saddled with a mega-item in addition to the average workload."
           (dolist (item items)
             (when (setq dur (gethash item table))
               (setq total-duration (time-add total-duration dur))))))
-      ;; Special case for first time
       (if (equal total-duration (time-convert 0 t))
+          ;; Special case for first time
           (el-job--split-evenly items n)
         (let ((max-per-core (/ (float-time total-duration) n))
               (this-sublist-sum 0)
@@ -177,7 +166,7 @@ being saddled with a mega-item in addition to the average workload."
               dur)
           (catch 'filled
             (while-let ((item (pop items)))
-              (setq dur (float-time (gethash item table)))
+              (setq dur (float-time (or (gethash item table) 0)))
               (if (null dur)
                   (push item untimed)
                 (if (> dur max-per-core)
@@ -213,7 +202,7 @@ being saddled with a mega-item in addition to the average workload."
           sublists)))))
 
 (defun el-job--split-evenly (big-list n)
-  "Split BIG-LIST equally into a list of N sublists.
+  "Split BIG-LIST equally into a list of up to N sublists.
 
 In the unlikely case where BIG-LIST contains N or fewer elements,
 that results in a value just like BIG-LIST except that
@@ -228,30 +217,14 @@ each element is wrapped in its own list."
         (setq big-list (nthcdr sublist-length big-list))))
     (delq nil result)))
 
+;; TODO: Probably deprecate
 (defvar el-job--force-cores nil
   "Explicit default for `el-job--cores'.
-If set, use this value instead of attempting to count CPU cores.")
+If set, use this value instead of `num-processors'.")
 
+;; TODO: Probably deprecate
 (defvar el-job--cores nil
-  "Max simultaneous processes for a given batch of jobs.")
-
-(defun el-job--count-logical-cores ()
-  "Return sum of available processor cores/hyperthreads, minus 1."
-  (max (1- (string-to-number
-            (pcase system-type
-              ((or 'gnu 'gnu/linux 'gnu/kfreebsd 'berkeley-unix)
-               (if (executable-find "nproc")
-                   (shell-command-to-string "nproc --all")
-                 (shell-command-to-string "lscpu -p | egrep -v '^#' | wc -l")))
-              ((or 'darwin)
-               (shell-command-to-string "sysctl -n hw.logicalcpu_max"))
-              ;; No idea if this works
-              ((or 'cygwin 'windows-nt 'ms-dos)
-               (ignore-errors
-                 (with-temp-buffer
-                   (call-process "echo" nil t nil "%NUMBER_OF_PROCESSORS%")
-                   (buffer-string)))))))
-       1))
+  "Max simultaneous processes for a given job of jobs.")
 
 (defun el-job--zip-all (alists)
   "Zip all ALISTS into one, destructively.
@@ -264,10 +237,9 @@ See `el-job-child--zip' for details."
 
 ;;; Main logic:
 
-(defvar el-job--batches (make-hash-table :test #'eq))
-(cl-defstruct (el-job-batch (:constructor el-job-batch-make)
-                            (:copier nil)
-                            (:conc-name el-job-))
+(defvar el-jobs (make-hash-table :test #'eq))
+(cl-defstruct (el-job (:constructor el-job--make)
+                      (:copier nil))
   lock
   processes
   inputs
@@ -286,9 +258,8 @@ See `el-job-child--zip' for details."
                               wrapup
                               await
                               lock
-                              max-children ;; may deprecate
-                              ;; TODO
-                              ;;  use-file-handlers
+                              max-children ;; May deprecate
+                              ;; skip-file-handlers ;; TODO
                               debug)
   "Run FUNCALL in one or more headless Elisp processes.
 Then merge the return values \(lists of N lists) into one list
@@ -349,16 +320,19 @@ same list of results that would have been passed to WRAPUP, and WRAPUP
 is not executed.  Otherwise, the return value is nil.
 
 WRAPUP receives two arguments: the results as mentioned before, and the
-job batch object.  The latter is mainly useful to check timestamps,
+job job object.  The latter is mainly useful to check timestamps,
 which you can get from this form:
 
     \(el-job-timestamps JOB)
 
 
-LOCK is a symbol identifying this batch of jobs, and prevents launching
-another batch with the same LOCK if the previous batch has not
+LOCK is a symbol identifying this job, and prevents launching
+another job with the same LOCK if the previous has not
 completed.  It can also be a keyword or an integer below 536,870,911
 \(suitable for `eq').
+
+If LOCK is set, the job\\='s associated process buffers stick around.
+Seek buffer names that start with \" *el-job-\" \(note leading space).
 
 EVAL-ONCE is a string containing a Lisp form.  It is evaluated in the
 child just before FUNCALL, but only once, even though FUNCALL may be
@@ -369,45 +343,42 @@ evaluated many times."
   (if el-job--force-cores
       (setq el-job--cores el-job--force-cores)
     (unless el-job--cores
-      (setq el-job--cores (el-job--count-logical-cores))))
-  (let ( batch stop )
+      (setq el-job--cores (max 1 (1- (num-processors))))))
+  (let ((name (or lock (intern (format-time-string "%FT%H%M%S%N"))))
+        job stop)
     (if lock
-        (if (setq batch (gethash lock el-job--batches))
-            (if (seq-some #'process-live-p (el-job-processes batch))
-                (setq stop (message "el-job: Batch %s still at work"))
-              (mapc #'delete-process (el-job-processes batch))
-              (setf (el-job-processes batch)      nil)
-              (setf (el-job-inputs batch)         nil)
-              (setf (el-job-results batch)        nil)
-              (setf (el-job-inhibit-wrapup batch) nil)
-              (setf (el-job-lock batch)           lock)
-              (setf (el-job-timestamps batch)
+        (if (setq job (gethash lock el-jobs))
+            (if (seq-some #'process-live-p (el-job-processes job))
+                (setq stop (message "%s" "el-job: Batch still at work"))
+              (mapc #'el-job--kill-quietly (el-job-processes job))
+              (setf (el-job-processes job)      nil)
+              (setf (el-job-inputs job)         nil)
+              (setf (el-job-results job)        nil)
+              (setf (el-job-inhibit-wrapup job) nil)
+              (setf (el-job-timestamps job)
                     (list :accept-launch-request (time-convert nil t))))
-          (setq batch
-                (puthash lock (el-job-batch-make :lock lock)
-                         el-job--batches)))
+          (setq job (puthash name (el-job--make :lock lock) el-jobs)))
       ;; TODO: Do not benchmark inputs for anonymous job
       ;;       or when ... another keyword :skip-benchmark t?
-      (setq batch (el-job-batch-make)))
+      (setq job (puthash name (el-job--make) el-jobs)))
     (cond
      (stop)
 
      ;; TODO: Run single-threaded in current Emacs to enable stepping
-     ;;       through code with edebug.
+     ;;       through code with edebug.  Or should that be done on the user end?
      ;; NOTE: Must not `load' the feature files (would undo edebug
      ;;       instrumentations in them).
      (debug)
 
      (t
-
       (let* ((splits (el-job--split-optimally inputs
                                               (or max-children el-job--cores)
-                                              (el-job-elapsed-table batch)))
+                                              (el-job-elapsed-table job)))
              (n (if splits (length splits) 1))
-             ;; Anonymous batch needs buffer names that will never be reused
+             ;; Anonymous job needs buffer names that will never be reused
              (name (or lock (format-time-string "%FT%H%M%S%N")))
              (shared-stderr
-              (setf (el-job-stderr batch)
+              (setf (el-job-stderr job)
                     (with-current-buffer
                         (get-buffer-create (format " *el-job-%s:err*" name) t)
                       (erase-buffer)
@@ -416,16 +387,31 @@ evaluated many times."
              print-level
              (print-circle t)
              (print-symbols-bare t)
-             (inject-vars-alist
-              ;; TODO: Reuse allocated memory instead of building a new
-              ;; list since the values could possibly be huge.
-              (cl-loop
-               for var in inject-vars
-               if (symbolp var) collect (cons var (symbol-value var))
-               else collect var))
-             (inject-vars-expr (prin1-to-string
-                                `(dolist (var ',inject-vars-alist)
-                                   (set (car var) (cdr var)))))
+             (print-escape-nonascii t) ;; necessary?
+             (print-escape-newlines t)
+             ;; TODO: Maybe split up into :let and :inject, or :set-vars and
+             ;; :copy-vars, or mandate that symbols come first and cons cells
+             ;; last.  Not sure if making this list allocates more memory.
+             (vars (prin1-to-string
+                    (cl-loop for var in inject-vars
+                             if (symbolp var)
+                             collect (cons var (symbol-value var))
+                             else collect var)))
+             (libs (prin1-to-string (mapcar #'el-job--find-lib load)))
+             (command
+              (list
+               (file-name-concat invocation-directory invocation-name)
+               "--quick"
+               "--batch"
+               "--load" (el-job--find-lib 'el-job-child)
+               "--eval" (format "(el-job-child--work #'%S)" funcall)))
+             (sentinel
+              (lambda (proc event)
+                (pcase event
+                  ("finished\n"
+                   (el-job--handle-finished proc job n wrapup))
+                  ("deleted\n")
+                  (_ (message "Process event: %s" event)))))
              ;; Ensure the working directory is not remote (messes things up)
              (default-directory invocation-directory)
              items proc)
@@ -435,8 +421,6 @@ evaluated many times."
                 (make-process
                  :name (format "el-job-%s:%d" name i)
                  :noquery t
-                 ;; Pipe is the fallback on environments that don't support
-                 ;; PTY, so I'll force pipe for now to reveal any footguns
                  :connection-type 'pipe
                  :stderr shared-stderr
                  :buffer (with-current-buffer (get-buffer-create
@@ -444,47 +428,33 @@ evaluated many times."
                                                t)
                            (erase-buffer)
                            (current-buffer))
-                 :command
-                 (nconc
-                  (list
-                   (file-name-concat invocation-directory invocation-name)
-                   "--quick"
-                   "--batch")
-                  (if inject-vars (list "--eval" inject-vars-expr))
-                  (cl-loop
-                   for file in (mapcar #'el-job--find-lib load)
-                   nconc (list "--load" file))
-                  (if eval-once (list "--eval" eval-once))
-                  (list
-                   "--load" (el-job--find-lib 'el-job-child)
-                   "--eval" (if items
-                                (format "(el-job-child--work #'%S)" funcall)
-                              (format "(el-job-child--work #'%S '%s)"
-                                      funcall
-                                      (prin1-to-string items)))))
-                 :sentinel
-                 (lambda (proc event)
-                   (pcase event
-                     ("finished\n"
-                      (el-job--handle-finished proc batch n wrapup))
-                     ("deleted\n")
-                     (_ (message "Process event: %s" event))))))
-          (push proc (el-job-processes batch))
-          (setf (alist-get proc (el-job-inputs batch))
+                 :command command
+                 :sentinel sentinel))
+          (with-current-buffer (process-buffer proc)
+            (process-send-string proc vars)
+            (process-send-string proc "\n")
+            (process-send-string proc libs)
+            (process-send-string proc "\n")
+            (process-send-string proc (or eval-once "nil"))
+            (process-send-string proc "\n")
+            (process-send-string proc (prin1-to-string items))
+            (process-send-string proc "\n")
+            (process-send-eof proc))
+          (push proc (el-job-processes job))
+          (setf (alist-get proc (el-job-inputs job))
                 items))
-        (plist-put (el-job-timestamps batch)
+        (plist-put (el-job-timestamps job)
                    :launched-children (time-convert nil t)))
-      ;; A big use-case for synchronous execution: return the results directly
-      ;; to the caller.  It is still multi-core, so should be faster than a
-      ;; normal funcall.
+      ;; A big use-case for synchronous execution: return directly to caller.
+      ;; No need to know computer-science things like awaits or futures.
       (when await
-        (setf (el-job-inhibit-wrapup batch) t)
-        (if (eshell-wait-for-processes (el-job-processes batch) await)
-            (el-job-results batch)
-          (setf (el-job-inhibit-wrapup batch) nil)))))))
+        (setf (el-job-inhibit-wrapup job) t)
+        (if (eshell-wait-for-processes (el-job-processes job) await)
+            (el-job-results job)
+          (setf (el-job-inhibit-wrapup job) nil)))))))
 
 ;; TODO: Sanitize/cleanup after error
-(defun el-job--handle-finished (proc batch n &optional wrapup)
+(defun el-job--handle-finished (proc job n &optional wrapup)
   "If PROC has exited, record its output in object BATCH.
 
 Each batch-job is expected to call this a total of N times; if this is
@@ -495,11 +465,10 @@ the Nth call, then call function WRAPUP and pass it the merged outputs."
    ((/= 0 (process-exit-status proc))
     (message "%s" "Nonzero exit status"))
    (t
-    (unless (<= 48 (string-to-char (substring (process-name proc) -1))
-                57)
-      ;; Name ends in an angle bracket e.g. "process-13<5>"
-      (message "Unintended duplicate process name %s" proc))
+    (when (string-suffix-p ">" (process-name proc))
+      (message "Unintended duplicate process name for %s" proc))
     (let (output)
+
       (with-current-buffer (process-buffer proc)
         (condition-case err (setq output (read (buffer-string)))
           (( quit )
@@ -507,32 +476,49 @@ the Nth call, then call function WRAPUP and pass it the merged outputs."
           (( error )
            (error "Problems reading el-job child output: %S" err))
           (:success
-           (when (el-job-lock batch)
+           (when (el-job-lock job)
              ;; Record the time spent by FUNCALL on each item in
              ;; INPUTS, for next time with `el-job--split-optimally'.
              (let ((durations (cdar output))
-                   (input (alist-get proc (el-job-inputs batch))))
-               (dolist (item input)
-                 (puthash item (pop durations) (el-job-elapsed-table batch)))))
+                   (input (alist-get proc (el-job-inputs job))))
+               (while input
+                 (puthash (pop input) (pop durations)
+                          (el-job-elapsed-table job)))))
            ;; The `car' was just our own metadata
-           (push (cdr output) (el-job-results batch)))))
-      (when (= (length (el-job-results batch)) n)
-        ;; We are in the last process sentinel
-        (plist-put (el-job-timestamps batch)
+           (push (cdr output) (el-job-results job)))))
+
+      ;; The last process sentinel
+      (when (= (length (el-job-results job)) n)
+        (plist-put (el-job-timestamps job)
                    :children-done (caar output))
-        (unless (el-job-lock batch)
-          (kill-buffer (el-job-stderr batch))
-          (dolist (proc (el-job-processes batch))
-            (kill-buffer proc)))
+        ;; Clean up after an anonymous job
+        (unless (el-job-lock job)
+          (kill-buffer (el-job-stderr job))
+          (dolist (proc (el-job-processes job))
+            (kill-buffer (process-buffer proc))))
         ;; Would be nice if we could timestamp the moment where we /begin/
         ;; accepting results, i.e. the first sentinel, but this may occur
         ;; before the last child has exited, so it would be confusing.  At
         ;; least we can catch the moment before we merge the results.
-        (plist-put (el-job-timestamps batch)
+        (plist-put (el-job-timestamps job)
                    :got-all-results (time-convert nil t))
-        (setf (el-job-results batch) (el-job--zip-all (el-job-results batch)))
-        (when (and wrapup (not (el-job-inhibit-wrapup batch)))
-          (funcall wrapup (el-job-results batch) batch)))))))
+        (setf (el-job-results job) (el-job--zip-all (el-job-results job)))
+        (when (and wrapup (not (el-job-inhibit-wrapup job)))
+          (funcall wrapup (el-job-results job) job)))))))
+
+(defun el-job--kill-quietly (proc)
+  (let ((buf (process-buffer proc)))
+    (set-process-filter proc #'ignore)
+    (set-process-sentinel proc #'ignore)
+    (kill-buffer buf)
+    (delete-process proc)))
+
+(defun el-job--kill-all ()
+  (interactive)
+  (dolist (buf (match-buffers "^ \\*el-job-"))
+    (if-let ((proc (get-buffer-process buf)))
+        (el-job--kill-quietly proc)
+      (kill-buffer buf))))
 
 (provide 'el-job)
 

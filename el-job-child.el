@@ -35,13 +35,28 @@ and each element must be a proper list or nil."
     (when alist2 (error "Lists differed in length"))
     (nreverse merged)))
 
-(defun el-job-child--work (func &optional items)
+;; (defun el-job-child--receive-injection ()
+;;   ;; (dolist (var (read-minibuffer ""))
+;;   (dolist (var (read t))
+;;     (set (car var) (cdr var))))
+
+(defun el-job-child--work (func)
   "Run FUNC on one of ITEMS at a time.
 FUNC comes from :funcall argument of `org-node-job-launch'.
 
 Benchmark how long FUNC took to handle each item, and add that
 information to the final return value."
-  (let (item start output meta results)
+  ;; (let ((items (read-minibuffer ""))
+  (let ((vars  (read-minibuffer ""))
+        (libs  (read-minibuffer ""))
+        (eval  (read-minibuffer ""))
+        (items (read-minibuffer ""))
+        item start output meta results)
+    (dolist (var vars)
+      (set (car var) (cdr var)))
+    (dolist (lib libs)
+      (load lib))
+    (if eval (eval eval))
     (if items
         (while items
           (setq item (pop items))
