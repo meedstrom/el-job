@@ -1,4 +1,4 @@
-;;; el-job-child.el ---  -*- lexical-binding: t; -*-
+;;; el-job-child.el --- Worker code for children  -*- lexical-binding: t; -*-
 ;; Copyright (C) 2024 Martin Edström
 
 ;; This program is free software: you can redistribute it and/or modify
@@ -16,11 +16,14 @@
 
 ;;; Commentary:
 
-;; We use `time-convert' instead of `current-time' because
-;; 1. (TICKS . HZ) implies a bit less GC churn than (HIGH LOW USEC PSEC)
-;; 2. With `current-time', we would have to inject `current-time-list'
+;; The part of the codebase that child processes will need, and no more.
 
 ;;; Code:
+
+;; We use `time-convert' instead of `current-time' because
+;; 1. (TICKS . HZ) implies a bit less GC churn than (HIGH LOW USEC PSEC)
+;; 2. (TICKS . HZ) will be future default
+;; 3. With `current-time', we would have to always inject `current-time-list'
 
 (defun el-job-child--zip (alist1 alist2)
   "Zip two alists into one, destructively.
@@ -35,28 +38,29 @@ and each element must be a proper list or nil."
     (when alist2 (error "Lists differed in length"))
     (nreverse merged)))
 
-;; (defun el-job-child--receive-injection ()
-;;   ;; (dolist (var (read-minibuffer ""))
-;;   (dolist (var (read t))
-;;     (set (car var) (cdr var))))
+(defun el-job-child--receive-injection ()
+  "Handle :inject-vars, :load and :eval-once."
+  (let ((vars (read-minibuffer ""))
+        (libs (read-minibuffer ""))
+        (eval (read-minibuffer "")))
+    (dolist (var vars)
+      (set (car var) (cdr var)))
+    (dolist (lib libs)
+      (load lib))
+    (if eval (eval eval))))
 
+(defvar el-job-child--ready nil)
 (defun el-job-child--work (func)
   "Run FUNC on one of ITEMS at a time.
 FUNC comes from :funcall argument of `org-node-job-launch'.
 
 Benchmark how long FUNC took to handle each item, and add that
 information to the final return value."
-  ;; (let ((items (read-minibuffer ""))
-  (let ((vars  (read-minibuffer ""))
-        (libs  (read-minibuffer ""))
-        (eval  (read-minibuffer ""))
-        (items (read-minibuffer ""))
+  (unless el-job-child--ready
+    (setq el-job-child--ready t)
+    (el-job-child--receive-injection))
+  (let ((items (read-minibuffer ""))
         item start output meta results)
-    (dolist (var vars)
-      (set (car var) (cdr var)))
-    (dolist (lib libs)
-      (load lib))
-    (if eval (eval eval))
     (if items
         (while items
           (setq item (pop items))
@@ -74,6 +78,7 @@ information to the final return value."
     (let (print-length
           print-level
           (print-circle t)
+          (print-escape-newlines t)
           (print-symbols-bare t))
       (prin1 (cons meta results)))))
 
