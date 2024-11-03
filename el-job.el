@@ -21,6 +21,9 @@
 ;; Keywords:         processes
 ;; Package-Requires: ((emacs "28.1") (compat "30"))
 
+;; NOTE: Looking for Package-Version?
+;;       Consult your package manager, or the Git tag.
+
 ;;; Commentary:
 
 ;; Imagine you have a function you'd like to run on a long list of inputs.  You
@@ -36,17 +39,22 @@
 ;;; Code:
 
 (require 'cl-lib)
-(require 'esh-proc)
 (require 'compat)
 (require 'el-job-child)
-(declare-function eshell-wait-for-processes "esh-proc")
-
-;; TODO: Want a method to keep children alive and skip spin-up.
-
-;; TODO: Really call wrapup wrapup? Callback? Last-sentinel? Finish-func?
-;;       Handle-done?
 
 ;;; Subroutines:
+
+(defvar el-job--debug-level 0)
+(defun el-job--dbg (level fmt &rest args)
+  "If debugging is enabled, format FMT with ARGS and print.
+LEVEL is the threshold for `el-job--debug-level' to unlock this warning.
+At level 0, display as warning."
+  (declare (indent 2))
+  (if (<= level el-job--debug-level)
+      (if (> level 0)
+          (message (concat (format "(el-job debug:%d) " level) fmt)
+                   args)
+        (display-warning 'el-job (apply #'format-message fmt args)))))
 
 (defun el-job--find-lib (feature)
   "Look for .eln, .elc or .el file corresponding to FEATURE.
@@ -111,6 +119,12 @@ Note: if you are currently editing the source code for FEATURE, use
                    (byte-compile-dest-file-function
                     `(lambda (&rest _) ,elc)))
               (when (native-comp-available-p)
+                ;; FIXME: Guix strips the hash from the .eln filename, so
+                ;; compiling now can result in an .eln in ~/.emacs.d that will
+                ;; always take precedence over the one shipped by Guix.  If we
+                ;; want to cover for that, it'd be safer to compile into /tmp
+                ;; with a filename based on emacs-init-time or something.
+                ;; See org-node issue #68.
                 (native-compile-async (list loaded)))
               ;; Native comp may take a while, so return .elc this time.
               ;; We should not pick an .elc from load path if Emacs is
@@ -133,13 +147,19 @@ Note: if you are currently editing the source code for FEATURE, use
       ;; up until the point the developer actually evals the .el buffer.
       loaded)))
 
+;; TODO: Never accept nil as a benchmarked input
+;; TODO: Guarantee that it always returns a list of non-empty lists. (Non-empty
+;;       meaning each does contain members of ITEMS). Easier to reason about
+;;       mistakes in the code later.
 (defun el-job--split-optimally (items n table)
   "Split ITEMS into up to N lists of items.
 
-Assuming TABLE has benchmarks for how long this job took last time to
-execute on a given item, use the benchmarks to rebalance the lists so
-that each list should take around the same total wall-time to work
-through this time.
+For all keys in TABLE that match one of ITEMS, assume the value holds a
+benchmark \(a Lisp time value) for how long it took in the past to pass
+this item through the FUNCALL function specified by `el-job-launch'.
+
+Use these benchmarks to rebalance the lists so that each sub-list should
+take around the same total wall-time to work through this time.
 
 This reduces the risk that one child takes noticably longer due to
 being saddled with a mega-item in addition to the average workload."
@@ -164,13 +184,14 @@ being saddled with a mega-item in addition to the average workload."
               this-sublist
               untimed
               dur)
+          ;; Loop over items again now that we have the total...
           (catch 'filled
             (while-let ((item (pop items)))
               (setq dur (float-time (or (gethash item table) 0)))
               (if (null dur)
                   (push item untimed)
                 (if (> dur max-per-core)
-                    ;; Dedicate huge items to their own cores
+                    ;; Dedicate huge items to their own .cores
                     (push (list item) sublists)
                   (if (< dur (- max-per-core this-sublist-sum))
                       (progn
@@ -196,7 +217,8 @@ being saddled with a mega-item in addition to the average workload."
                   ;; REVIEW: Code never ends up here, right?
                   (progn
                     (setq sublists (el-job--split-evenly untimed n))
-                    (message "%s" "el-job: Unexpected code path. Not fatal, but report appreciated"))
+                    (message "el-job: Unexpected code path.  Not fatal, but report appreciated!  Result: %S"
+                             sublists))
                 (dolist (item (nconc untimed items))
                   (push item (nth (% (cl-incf ctr) len) sublists))))))
           sublists)))))
@@ -205,7 +227,7 @@ being saddled with a mega-item in addition to the average workload."
   "Split BIG-LIST equally into a list of up to N sublists.
 
 In the unlikely case where BIG-LIST contains N or fewer elements,
-that results in a value just like BIG-LIST except that
+the result looks just like BIG-LIST except that
 each element is wrapped in its own list."
   (let ((sublist-length (max 1 (/ (length big-list) n)))
         result)
@@ -217,50 +239,119 @@ each element is wrapped in its own list."
         (setq big-list (nthcdr sublist-length big-list))))
     (delq nil result)))
 
-;; TODO: Probably deprecate
-(defvar el-job--force-cores nil
-  "Explicit default for `el-job--cores'.
-If set, use this value instead of `num-processors'.")
-
-;; TODO: Probably deprecate
-(defvar el-job--cores nil
-  "Max simultaneous processes for a given job of jobs.")
-
-(defun el-job--zip-all (alists)
-  "Zip all ALISTS into one, destructively.
+(defun el-job--zip-all (meta-lists)
+  "Destructively zip all META-LISTS into one.
 See `el-job-child--zip' for details."
-  (let ((merged (pop alists)))
-    (while alists
-      (setq merged (el-job-child--zip (pop alists) merged)))
+  (let ((merged (pop meta-lists)))
+    (while meta-lists
+      (setq merged (el-job-child--zip (pop meta-lists) merged)))
     merged))
 
 
 ;;; Main logic:
 
+;; Compare the perfs on your machine!  If you use org-node:
+;; 1. Evaluate: (progn (setq el-job-default-method 'poll) (el-job-kill-all))
+;; 2. Do a few times: M-x org-node-reset
+(defvar el-job-default-method
+  (if (< emacs-major-version 30) 'reap 'change-hook)
+  "Method of getting output from subprocesses.
+Three settings possible:
+
+- `change-hook': Default on Emacs 30+.  Use `after-change-functions' in
+                  each process buffer.  Seems fastest on Emacs 31.0.50
+                  but much slower on Emacs 29.4, in the author's limited
+                  testing.
+
+- `reap': Default on Emacs <=29.  Tell the processes to die after one
+           run, so process sentinels can collect the output.
+
+- `poll': Keep the processes alive, and poll for finished output using
+           a simple timer.  Appears relatively performant on Emacs <=29.
+
+If you change this setting, remember to run \\[el-job-kill-all].")
+
+;; TODO: Reuse in methods other than poll.  Maybe when launch detects busy.
+(defvar el-job--global-timeout 15.0
+  "Max wait-delay for `el-job--poll' after which it should give up.
+Note that total wait time will be perhaps the double or triple; this is
+only the max interval between two polls.")
+
+(defvar el-job--cores nil)
 (defvar el-jobs (make-hash-table :test #'eq))
 (cl-defstruct (el-job (:constructor el-job--make)
-                      (:copier nil))
-  lock
-  processes
-  inputs
-  results
+                      (:copier nil)
+                      (:conc-name el-job:))
+  id
+  anonymous
+  (method el-job-default-method :documentation "See `el-job-default-method'.")
+  (benchmark t)
+  (sig 0)
+  (cores 1)
+  wrapup
+  (ready nil :documentation "Processes ready for input.  Becomes nil permanently if METHOD is `reap'.")
+  (busy nil :documentation "Processes that have not yet returned output.")
   stderr
-  inhibit-wrapup
   (timestamps (list :accept-launch-request (time-convert nil t)))
-  (elapsed-table (make-hash-table :test #'equal)))
+  (poll-timer (timer-create))
+  finish-times
+  (past-elapsed (make-hash-table :test #'equal))
+  spawn-args
+  input-sets
+  queue
+  results)
 
-;; TODO: How to share the same elapsed-table, without locking?
+(defmacro el-job--with (job slots &rest body)
+  "Make SLOTS expand into object accessors for el-job JOB inside BODY.
+Cf. `with-slots' in the eieio library, or `let-alist'.
+
+For clarity inside BODY, each symbol name in SLOTS must be prepended
+with one character of your choosing, such as a dot."
+  (declare (indent 2) (debug ((&rest (symbolp sexp)))))
+  `(cl-symbol-macrolet
+       ,(cl-loop
+         for slot in slots
+         collect `(,slot (,(intern (concat "el-job:"
+                                           (substring (symbol-name slot) 1)))
+                          ,job)))
+     ,@body))
+
+(defun el-job--launch-anonymous ( load
+                                  inject-vars
+                                  eval-once
+                                  funcall
+                                  inputs
+                                  wrapup )
+  "Launch an anonymous job.
+See `el-job-launch' for arguments."
+  (let* ((id (intern (format-time-string "%FT%H%M%S%N")))
+         (job (puthash id (el-job--make :id id
+                                        :anonymous t
+                                        :benchmark nil
+                                        :method 'reap
+                                        :cores el-job--cores
+                                        :wrapup wrapup
+                                        :queue inputs)
+                       el-jobs)))
+    (el-job--spawn-processes job load inject-vars eval-once funcall)
+    (el-job--exec job)))
+
+(defun el-job-is-busy (id)
+  "Return list of busy processes for job ID, if any.
+Safely return nil otherwise, whether or not ID is known."
+  (when-let ((job (gethash id el-jobs)))
+    (el-job:busy job)))
+
 (cl-defun el-job-launch (&key load
                               inject-vars
                               eval-once
                               funcall
                               inputs
                               wrapup
-                              await
-                              lock
-                              max-children ;; May deprecate
-                              ;; skip-file-handlers ;; TODO
-                              debug)
+                              id
+                              if-busy
+                              skip-benchmark
+                              method)
   "Run FUNCALL in one or more headless Elisp processes.
 Then merge the return values \(lists of N lists) into one list
 \(of N lists) and pass it to WRAPUP.
@@ -280,7 +371,8 @@ elements:
   (museum1 museum2 museum3))
 
 which is why it's important that FUNCALL always returns a list with a
-fixed number of sub-lists, enabling this merge.
+fixed number of sub-lists, enabling this merge.  Of course, these
+sub-lists are allowed to be empty, i.e. nil.
 
 Alternatively, FUNCALL may always return nil.
 
@@ -288,8 +380,9 @@ Alternatively, FUNCALL may always return nil.
 FUNCALL is a function symbol known to be defined in an Emacs Lisp file.
 It is the only mandatory argument, but rarely useful on its own.
 
-Usually, the list LOAD would indicate where to find that Emacs Lisp
-file; that file should end with a `provide' call to the same feature.
+Usually, you would need to pass the symbol LOAD to indicate where to
+find that Emacs Lisp file; that file should end with a `provide' call on
+the same symbol.  LOAD can also be a list of several symbols.
 
 While subprocesses do not inherit `load-path', it is the mother Emacs
 process that locates that file \(by inspecting `load-history', see
@@ -301,227 +394,403 @@ statements into that Emacs Lisp file.  You can pass `load-path' via
 INJECT-VARS, but consider that fewer dependencies means faster spin-up.
 
 
-INPUTS is a list that will be split by up to the number
-of CPU cores on your machine, and this determines how many
-subprocesses will spawn.  If INPUTS is nil, only
-one subprocess will spawn.
+INPUTS is a list that will be split by up to the output of
+`num-processors', and this determines how many subprocesses will spawn.
+If INPUTS is omitted, only one subprocess will spawn.
 
 The subprocesses have no access to current Emacs state.  The only way
 they can affect current state, is if FUNCALL returns data, which is then
 handled by WRAPUP function in the current Emacs.
 
 Emacs stays responsive to user input up until all subprocesses finish,
-which is when their results are merged and WRAPUP is executed.  If you
-prefer Emacs to freeze and wait for this momentous event, set
-AWAIT to a number of seconds to wait at most.
-
-If all children finish before AWAIT, then the return value is the
-same list of results that would have been passed to WRAPUP, and WRAPUP
-is not executed.  Otherwise, the return value is nil.
+which is when their results are merged and WRAPUP is executed.
 
 WRAPUP receives two arguments: the results as mentioned before, and the
-job job object.  The latter is mainly useful to check timestamps,
+job object.  The latter is mainly useful to check timestamps,
 which you can get from this form:
 
-    \(el-job-timestamps JOB)
+    \(el-job:timestamps JOB)
 
 
-LOCK is a symbol identifying this job, and prevents launching
-another job with the same LOCK if the previous has not
-completed.  It can also be a keyword or an integer below 536,870,911
-\(suitable for `eq').
+ID identifies this job, and is a symbol, a keyword or an integer below
+536,870,911 \(suitable for `eq').  A non-nil ID has several purposes:
 
-If LOCK is set, the job\\='s associated process buffers stick around.
-Seek buffer names that start with \" *el-job-\" \(note leading space).
+- Allow the processes to stay alive in the background after completion,
+  to skip spin-up time on next call.
+  May make a difference if they load a lot of libraries.
+  This does not apply if METHOD is `reap'. See `el-job-default-method'.
+
+- Allow repeated calls on the same inputs to optimize how those inputs
+  are split, thanks to benchmarks from previous calls.
+  If needed, you can inhibit this by setting SKIP-BENCHMARK non-nil.
+
+- The associated process buffers stick around and can be inspected for
+  debugging purposes.  Seek buffer names that start with \" *el-job-\"
+  \(note leading space).
+
+- Prevent launching the same job twice, if the last invocation is not
+  done yet.  Argument IF-BUSY regulates what happens instead, see below.
+
+
+IF-BUSY comes into effect when the previous launch with the same ID is
+still at work.  IF-BUSY may take on one of three symbols:
+
+- `wait' \(default): append the inputs to a queue, to be handled
+                     after all children are ready
+- `noop': do nothing, drop inputs
+- `takeover': kill and restart with the new inputs
+
 
 EVAL-ONCE is a string containing a Lisp form.  It is evaluated in the
 child just before FUNCALL, but only once, even though FUNCALL may be
 evaluated many times."
-  (unless (symbolp funcall)
-    (error "Argument :funcall only takes a symbol"))
+  (unless el-job--cores
+    (setq el-job--cores (max 1 (1- (num-processors)))))
   (setq load (ensure-list load))
-  (if el-job--force-cores
-      (setq el-job--cores el-job--force-cores)
-    (unless el-job--cores
-      (setq el-job--cores (max 1 (1- (num-processors))))))
-  (let ((name (or lock (intern (format-time-string "%FT%H%M%S%N"))))
-        job stop)
-    (if lock
-        (if (setq job (gethash lock el-jobs))
-            (if (seq-some #'process-live-p (el-job-processes job))
-                (setq stop (message "%s" "el-job: Still at work"))
-              (mapc #'el-job--kill-quietly (el-job-processes job))
-              (setf (el-job-processes job)      nil)
-              (setf (el-job-inputs job)         nil)
-              (setf (el-job-results job)        nil)
-              (setf (el-job-inhibit-wrapup job) nil)
-              (setf (el-job-timestamps job)
-                    (list :accept-launch-request (time-convert nil t))))
-          (setq job (puthash name (el-job--make :lock lock) el-jobs)))
-      ;; TODO: Do not benchmark inputs for anonymous job
-      ;;       or when ... another keyword :skip-benchmark t?
-      (setq job (puthash name (el-job--make) el-jobs)))
-    (cond
-     (stop)
+  (setq if-busy (or if-busy 'wait))
+  (unless (and (symbolp funcall) (functionp funcall))
+    (error "Argument FUNCALL must be a symbol with a function definition"))
+  (when wrapup
+    (unless (and (symbolp wrapup) (functionp wrapup))
+      (error "Argument WRAPUP must be a symbol with a function definition")))
+  (if (null id)
+      (el-job--launch-anonymous load inject-vars eval-once funcall inputs wrapup)
+    (let ((arg-signature (+ (sxhash load)
+                            (sxhash inject-vars)
+                            (sxhash eval-once)
+                            (sxhash wrapup) ;; TODO: permit changing it
+                            (sxhash method)
+                            (sxhash funcall)))
+          (job (or (gethash id el-jobs)
+                   (puthash id (el-job--make :id id
+                                             :benchmark (not skip-benchmark)
+                                             :method (or method el-job-default-method))
+                            el-jobs)))
+          (respawn nil)
+          (exec nil))
+      (el-job--with job
+          (.queue .busy .ready .sig .cores .method .benchmark .spawn-args)
+        (unless (and .busy (eq if-busy 'noop))
+          (when (functionp inputs)
+            (setq inputs (funcall inputs)))
+          (if .busy
+              (pcase if-busy
+                ('takeover (setq respawn t)
+                           (setq exec t))
+                ('wait (setf .queue (append inputs .queue))))
+            (setf .queue inputs)
+            (setq exec t))
+          (when exec
+            (when (eq .method 'reap)
+              (setq respawn t))
+            (when (or (eq .method 'change-hook)
+                      (eq .method 'poll))
+              ;; TODO: Skip this check, just react on `process-send-string' fail
+              (unless (and (seq-every-p #'process-live-p .ready)
+                           (seq-every-p #'process-live-p .busy))
+                (el-job--dbg 1 "Found dead processes, resetting job %s" id)
+                (setq respawn t)))
+            ;; Only increment to e.g. 7 standby processes if it was ever called
+            ;; with 7+ inputs at the same time
+            (when (< .cores el-job--cores)
+              (setf .cores (min el-job--cores (max .cores (length .queue)))))
+            (setq arg-signature (+ arg-signature .cores))
+            (when (/= .sig arg-signature)
+              (setf .sig arg-signature)
+              (setf .spawn-args (list job load inject-vars eval-once funcall))
+              (el-job--dbg 2 "New arguments, resetting job %s" id)
+              (setq respawn t))
+            (when respawn
+              (el-job--terminate job)
+              (when method
+                (setf .method method))
+              (setf .benchmark (not skip-benchmark))
+              (el-job--spawn-processes job load inject-vars eval-once funcall))
+            (setf .wrapup wrapup)
+            (el-job--exec job)
+            t))))))
 
-     ;; TODO: Run single-threaded in current Emacs to enable stepping
-     ;;       through code with edebug.  Or should that be done on the user end?
-     ;; NOTE: Must not `load' the feature files (would undo edebug
-     ;;       instrumentations in them).
-     (debug)
+(defvar-local el-job-here nil)
+(defun el-job--spawn-processes (job load inject-vars eval-once funcall)
+  "Spin up processes for JOB, standing by for input.
+For the rest of the arguments, see `el-job-launch'."
+  (el-job--with job (.benchmark .stderr .id .cores .ready .method)
+    (let* ((print-length nil)
+           (print-level nil)
+           (print-circle t)
+           (print-symbols-bare t)
+           (print-escape-newlines t)
+           (print-escape-nonascii t)
+           (vars (prin1-to-string
+                  (cl-loop for var in inject-vars
+                           if (symbolp var)
+                           collect (cons var (symbol-value var))
+                           else collect var)))
+           (libs (prin1-to-string (mapcar #'el-job--find-lib load)))
+           (command
+            (list
+             (file-name-concat invocation-directory invocation-name)
+             "--quick"
+             "--batch"
+             "--load" (el-job--find-lib 'el-job-child)
+             "--eval" (format "(el-job-child--work #'%S %S)"
+                              funcall .benchmark)))
+           ;; Ensure the working directory is not remote (messes things up)
+           (default-directory invocation-directory)
+           proc)
+      (setf .stderr
+            (with-current-buffer
+                (get-buffer-create (format " *el-job-%s:err*" .id) t)
+              (erase-buffer)
+              (current-buffer)))
+      (dotimes (i .cores)
+        (setq proc (make-process
+                    :name (format "el-job:%s:%d" .id i)
+                    :noquery t
+                    :connection-type 'pipe
+                    ;; https://github.com/jwiegley/emacs-async/issues/165
+                    :coding 'utf-8-emacs-unix
+                    :stderr (el-job:stderr job)
+                    :buffer (get-buffer-create (format " *el-job-%s:%d*" .id i) t)
+                    :command command
+                    :sentinel #'ignore))
+        (when (string-suffix-p ">" (process-name proc))
+          (el-job--dbg 1 "Unintended duplicate process id for %s" proc))
+        (with-current-buffer (process-buffer proc)
+          (setq-local el-job-here job)
+          (pcase .method
+            ('change-hook (add-hook 'after-change-functions
+                                    #'el-job--receive-in-buffer-if-done nil t))
+            ('reap (set-process-sentinel proc #'el-job--sentinel))))
+        (process-send-string proc vars)
+        (process-send-string proc "\n")
+        (process-send-string proc libs)
+        (process-send-string proc "\n")
+        (process-send-string proc (or eval-once "nil"))
+        (process-send-string proc "\n")
+        (push proc .ready)))))
 
-     (t
-      (let* ((splits (el-job--split-optimally inputs
-                                              (or max-children el-job--cores)
-                                              (el-job-elapsed-table job)))
-             (n (if splits (length splits) 1))
-             ;; Anonymous job needs buffer names that will never be reused
-             (name (or lock (format-time-string "%FT%H%M%S%N")))
-             (shared-stderr
-              (setf (el-job-stderr job)
-                    (with-current-buffer
-                        (get-buffer-create (format " *el-job-%s:err*" name) t)
-                      (erase-buffer)
-                      (current-buffer))))
-             print-length
-             print-level
-             (print-circle t)
-             (print-symbols-bare t)
-             (print-escape-nonascii t) ;; necessary?
-             (print-escape-newlines t)
-             ;; TODO: Maybe split up into :let and :inject, or :set-vars and
-             ;; :copy-vars, or mandate that symbols come first and cons cells
-             ;; last.  Not sure if making this list allocates more memory.
-             (vars (prin1-to-string
-                    (cl-loop for var in inject-vars
-                             if (symbolp var)
-                             collect (cons var (symbol-value var))
-                             else collect var)))
-             (libs (prin1-to-string (mapcar #'el-job--find-lib load)))
-             (command
-              (list
-               (file-name-concat invocation-directory invocation-name)
-               "--quick"
-               "--batch"
-               "--load" (el-job--find-lib 'el-job-child)
-               "--eval" (format "(el-job-child--work #'%S)" funcall)))
-             (sentinel
-              (lambda (proc event)
-                (pcase event
-                  ("finished\n"
-                   (el-job--handle-finished proc job n wrapup))
-                  ("deleted\n")
-                  (_ (message "Process event: %s" event)))))
-             ;; Ensure the working directory is not remote (messes things up)
-             (default-directory invocation-directory)
-             items proc)
-        (dotimes (i n)
-          (setq items (pop splits))
-          (setq proc
-                (make-process
-                 :name (format "el-job-%s:%d" name i)
-                 :noquery t
-                 :connection-type 'pipe
-                 :stderr shared-stderr
-                 :buffer (with-current-buffer (get-buffer-create
-                                               (format " *el-job-%s:%d*" name i)
-                                               t)
-                           (erase-buffer)
-                           (current-buffer))
-                 :command command
-                 :sentinel sentinel))
-          (with-current-buffer (process-buffer proc)
-            (process-send-string proc vars)
-            (process-send-string proc "\n")
-            (process-send-string proc libs)
-            (process-send-string proc "\n")
-            (process-send-string proc (or eval-once "nil"))
-            (process-send-string proc "\n")
-            (process-send-string proc (prin1-to-string items))
-            (process-send-string proc "\n")
-            (process-send-eof proc))
-          (push proc (el-job-processes job))
-          (setf (alist-get proc (el-job-inputs job))
-                items))
-        (plist-put (el-job-timestamps job)
-                   :launched-children (time-convert nil t)))
-      ;; A big use-case for synchronous execution: return directly to caller.
-      ;; No need to know computer-science things like awaits or futures.
-      (when await
-        (setf (el-job-inhibit-wrapup job) t)
-        (if (eshell-wait-for-processes (el-job-processes job) await)
-            (el-job-results job)
-          (setf (el-job-inhibit-wrapup job) nil)))))))
+(defun el-job--await (id timeout &optional message)
+  (let ((deadline (time-add (current-time) timeout)))
+    (catch 'timeout
+      (while (el-job-is-busy id)
+        (discard-input)
+        (if (time-less-p (current-time) deadline)
+            (progn (unless (current-message) (message message))
+                   (sit-for 0.1))
+          (throw 'timeout nil)))
+      t)))
 
-;; TODO: Sanitize/cleanup after error
-(defun el-job--handle-finished (proc job n &optional wrapup)
-  "If PROC has exited, record its output in object JOB.
+(defun el-job--exec (job)
+  "Split the queued inputs in JOB and pass to all children.
 
-Each job is expected to call this a total of N times; if this is
-the Nth call, then call function WRAPUP and pass it the merged outputs."
-  (cond
-   ((not (eq 'exit (process-status proc)))
-    (message "%s" "Process said \"finished\" but process status is not `exit'"))
-   ((/= 0 (process-exit-status proc))
-    (message "%s" "Nonzero exit status"))
-   (t
-    (when (string-suffix-p ">" (process-name proc))
-      (message "Unintended duplicate process name for %s" proc))
-    (let (output)
+This puts them to work.  Each successful child will print output
+\(even nil output) to its associated process buffer, whereupon something
+should trigger `el-job--receive'."
+  (el-job--with job
+      ( .ready .busy .input-sets .results .queue .cores .past-elapsed
+        .benchmark .timestamps .poll-timer .finish-times .anonymous .method
+        .id .timeout )
+    (cancel-timer .timeout))
+  (setf .results nil)
+  (setf .finish-times nil)
+  (let ((splits (el-job--split-optimally .queue .cores .past-elapsed)))
+    (unless (length< splits (1+ (length .ready)))
+      (error "Items split in %d lists, but only %d ready processes"
+             (length splits) (length .ready)))
+    (let ((print-length nil)
+          (print-level nil)
+          (print-circle t)
+          (print-symbols-bare t)
+          (print-escape-newlines t)
+          items proc)
+      (while splits
+        (setq items (pop splits))
+        (cl-assert .ready)
+        (setq proc (pop .ready))
+        (push proc .busy)
+        (when .benchmark
+          (setf (alist-get proc .input-sets) items))
+        (with-current-buffer (process-buffer proc)
+          (erase-buffer)
+          (process-send-string proc (prin1-to-string items))
+          (process-send-string proc "\n")
+          (when (eq .method 'reap)
+            (process-send-string proc "die\n"))))))
+  (setf .queue nil)
+  (plist-put .timestamps :launched (time-convert nil t))
+  (setf .timeout (run-with-timer 30 nil #'el-job--timeout .id))
+  (when (eq .method 'poll)
+    (cancel-timer .poll-timer)
+    (setf .poll-timer
+          (run-with-timer 0.1 nil #'el-job--poll .busy .poll-timer 0.1)))))
 
-      (with-current-buffer (process-buffer proc)
-        (condition-case err (setq output (read (buffer-string)))
-          (( quit )
-           (error "BUG: Received impossible quit during sentinel"))
-          (( error )
-           (error "Problems reading el-job child output: %S" err))
-          (:success
-           (when (el-job-lock job)
-             ;; Record the time spent by FUNCALL on each item in
-             ;; INPUTS, for next time with `el-job--split-optimally'.
-             (let ((durations (cdar output))
-                   (input (alist-get proc (el-job-inputs job))))
-               (while input
-                 (puthash (pop input) (pop durations)
-                          (el-job-elapsed-table job)))))
-           ;; The `car' was just our own metadata
-           (push (cdr output) (el-job-results job)))))
+(defun el-job--timeout (id)
+  "If PROC "
+  (let ((job (gethash id el-jobs)))
+    (if (and job (el-job:busy job))
+        (progn
+          (el-job--terminate job)
+          (message "el-job: Timed out, was busy for 30+ seconds: %s"
+                   (el-job:id job)))
+      (el-job--dbg 1
+          "Timeout timer should have been cancelled for el-job ID %s" id))))
 
-      ;; The last process sentinel
-      (when (= (length (el-job-results job)) n)
-        (plist-put (el-job-timestamps job)
-                   :children-done (caar output))
-        ;; Clean up after an anonymous job
-        (unless (el-job-lock job)
-          (kill-buffer (el-job-stderr job))
-          (dolist (proc (el-job-processes job))
-            (kill-buffer (process-buffer proc))))
-        ;; Would be nice if we could timestamp the moment where we /begin/
-        ;; accepting results, i.e. the first sentinel, but this may occur
-        ;; before the last child has exited, so it would be confusing.  At
-        ;; least we can catch the moment before we merge the results.
-        (plist-put (el-job-timestamps job)
-                   :got-all-results (time-convert nil t))
-        (setf (el-job-results job) (el-job--zip-all (el-job-results job)))
-        (when (and wrapup (not (el-job-inhibit-wrapup job)))
-          (funcall wrapup (el-job-results job) job)))))))
+(defun el-job--sentinel (proc event)
+  "Given finished process PROC, run `el-job--receive' appropriately."
+  (with-current-buffer (process-buffer proc)
+    (if (and (equal event "finished\n")
+             (eq (process-status proc) 'exit)
+             (eq (process-exit-status proc) 0))
+        (el-job--receive proc)
+      (el-job--unhide-buffer (current-buffer))
+      (el-job--unhide-buffer (el-job:stderr el-job-here))
+      (message "Child had problems, check buffer %s" (buffer-name)))))
+
+(defun el-job--receive-in-buffer-if-done (&rest _)
+  "Handle output in current buffer if it appears complete.
+Can be called in a process buffer at any time."
+  (if (eq (char-before) ?\n)
+      (el-job--receive)))
+
+(defun el-job--poll (procs timer delay)
+  "Try to run `el-job--receive' in each buffer associated with PROCS.
+
+If any processes were not done yet, reassign the timer object TIMER to
+call this function again after DELAY seconds, upped by 50%.  Pass the
+increased delay along, so that it keeps increasing each time."
+  (setq procs (cl-loop for busy in procs
+                       unless (with-current-buffer (process-buffer busy)
+                                (el-job--receive-in-buffer-if-done))
+                       collect busy))
+  (when procs
+    (if (> delay el-job--global-timeout)
+        (progn
+          (el-job--dbg 0
+              "Took too long (over %d seconds), killing processes.
+If you see this during development, either override `el-job--global-timeout'
+or check what is causing FUNCALL to never return.
+Processes killed: %S" (truncate (* 2 el-job--global-timeout)) procs)
+          (mapc #'el-job--kill-quietly procs))
+      (setq delay (* delay 1.5))
+      (timer-set-time timer (time-add delay (time-convert nil t)))
+      (timer-set-function timer #'el-job--poll (list procs timer delay))
+      (timer-activate timer))))
+
+(defun el-job--receive (&optional proc)
+  "Handle output in current buffer.
+
+If this is the last output for the job, merge all outputs, maybe execute
+the wrapup function, finally maybe run the job again if there is now
+more input in the queue.
+
+Argument PROC, if provided, should be the corresponding process.
+If nil, infer it from the buffer, if process is still alive."
+  (let* ((inhibit-quit t)
+         (proc (or proc (get-buffer-process (current-buffer))))
+         (job el-job-here)
+         (output (condition-case-unless-debug err (read (buffer-string))
+                   (( error )
+                    (el-job--unhide-buffer (el-job:stderr job))
+                    (dolist (proc (el-job--all-processes job))
+                      (el-job--unhide-buffer (process-buffer proc))
+                      (el-job--kill-quietly-keep-buffer proc))
+                    (error "In buffer %S: problems reading child output: %S"
+                           (current-buffer) err)))))
+    (when output
+      (el-job--with job
+          ( .busy .ready .input-sets .past-elapsed .results .benchmark .queue
+            .timestamps .id .temp-hook .anonymous .method .finish-times
+            .timeout )
+        (push (caar output) .finish-times)
+        (when .benchmark
+          ;; Record time spent by FUNCALL on each item in INPUTS,
+          ;; for a better `el-job--split-optimally' in the future.
+          (let ((durations (cdar output))
+                (input (alist-get proc .input-sets)))
+            (while durations
+              (puthash (pop input) (pop durations) .past-elapsed))))
+        ;; The `car' was just this library's metadata
+        (push (cdr output) .results)
+        (setf .busy (delq proc .busy))
+        (unless (eq .method 'reap)
+          (push proc .ready))
+
+        ;; Extra actions when this is the last output
+        (when (null .busy)
+          (plist-put .timestamps :children-done
+                     (car (last (sort .finish-times #'time-less-p))))
+          (plist-put .timestamps :got-all-results (time-convert nil t))
+          ;; Cleanup
+          (cancel-timer .timeout)
+          (when .anonymous
+            (el-job--terminate job)
+            (remhash .id el-jobs))
+          ;; Finally the purpose of it all.
+          ;; Did this really take 700 lines of code?
+          (setf .results (el-job--zip-all .results))
+          (when .wrapup (funcall .wrapup .results job))
+          ;; Now there's more in the queue, run again at next good opportunity.
+          (when .queue
+            (when (eq .method 'reap)
+              (apply #'el-job--spawn-processes (el-job:spawn-args job)))
+            (el-job--exec job))))))
+  t)
+
+(defun el-job--terminate (job)
+  "Kill processes in JOB and revert some state variables.
+This kills all process buffers, but does not deregister the ID from
+`el-jobs' nor clear queued input."
+  (cancel-timer (el-job:poll-timer job))
+  (cancel-timer (el-job:timeout job))
+  (mapc #'el-job--kill-quietly (el-job:busy job))
+  (mapc #'el-job--kill-quietly (el-job:ready job))
+  (setf (el-job:busy job) nil)
+  (setf (el-job:ready job) nil)
+  (when-let ((stderr (el-job:stderr job)))
+    (kill-buffer stderr)))
+
+(defun el-job--kill-quietly-keep-buffer (proc)
+  "Kill PROC while silencing its sentinel and filter.
+See `el-job--kill-quietly' to also kill the buffer."
+  (set-process-filter proc #'ignore)
+  (set-process-sentinel proc #'ignore)
+  (delete-process proc))
 
 (defun el-job--kill-quietly (proc)
   "Delete process PROC and kill its buffer.
-Prevent its sentinel and filter from doing anything as this happens."
+Prevent its sentinel and filter from reacting."
   (let ((buf (process-buffer proc)))
-    (set-process-filter proc #'ignore)
-    (set-process-sentinel proc #'ignore)
-    (kill-buffer buf)
-    (delete-process proc)))
+    (el-job--kill-quietly-keep-buffer proc)
+    (kill-buffer buf)))
 
-(defun el-job--kill-all ()
-  "Kill all jobs."
+(defun el-job-kill-all ()
+  "Kill all el-jobs and forget metadata."
   (interactive)
-  (dolist (buf (match-buffers "^ \\*el-job-"))
-    (if-let ((proc (get-buffer-process buf)))
-        (el-job--kill-quietly proc)
-      (kill-buffer buf))))
+  (maphash (lambda (id job)
+             (el-job--terminate job)
+             (remhash id el-jobs))
+           el-jobs))
+
+(defun el-job--unhide-buffer (buf)
+  "Rename BUFFER to omit intiial space, and return new name."
+  (with-current-buffer buf
+    (rename-buffer (string-trim-left (buffer-name)))))
+
+(defun el-job--all-processes (job)
+  "Return all processes for JOB, busy and ready."
+  (append (el-job:busy job) (el-job:ready job)))
+
+(defun el-job--show ()
+  "Prompt for a job and show its metadata in a new buffer."
+  (interactive)
+  (let ((id (intern (completing-read "Get info on job: " el-jobs))))
+    (with-current-buffer (get-buffer-create "*el-job*" t)
+      (erase-buffer)
+      (cl-prin1 (gethash id el-jobs) (current-buffer))
+      (pp-buffer)
+      (switch-to-buffer (current-buffer)))
+    t))
 
 (provide 'el-job)
 

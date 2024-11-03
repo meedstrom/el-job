@@ -2,36 +2,36 @@
 
 Imagine you have a function you'd like to run on a long list of inputs.  You could run =(mapcar #'FN INPUTS)=, but that hangs Emacs until done.
 
-This library gives you the tools to split up the inputs and run the function in many subprocesses (one per CPU core), then merges their outputs and passes it back to the current Emacs.  In the meantime, current Emacs does not hang at all.
-
+This library is a tool to split up the inputs and run the function in many subprocesses (one per CPU core), then merge their outputs and pass it back to the current Emacs.  In the meantime, current Emacs does not hang at all.
 
 -------
 
-For real-world usage, search for =el-job-launch= in the source of [[https://github.com/meedstrom/org-node/blob/use-el-job/org-node.el][org-node.el]].
+For real-world usage, search for =el-job-launch= in the source of [[https://github.com/meedstrom/org-node/blob/use-el-job/org-node.el][org-node.el]] (unreleased feature branch---waiting on MELPA inclusion).
 
 ** News
 
-Still in a development honeymoon, so API very unstable.  Check back often!
+Still in a development honeymoon, API unstable.
 
-- [2024-11-02 Sat 10:54]
-  - RENAME
-    - Table =el-job--batches=  -> =el-jobs=
-  - Refactored internally to send input via =process-send-string= instead of constructing a convoluted command line
-    - Fixes vfork error from too long argument list
+- [2024-11-14 Thu 18:14]
+  - Version 0.3.0: Everything changed, so read the docstring again :-)
 
 ** Limitations
 
-1. For now, some limitations on FN's return value, which must always be a list of a fixed length, where the elements are themselves lists.  For example, at the end of org-node-parser.el, it returns:
+1. Will *drop support for Emacs 28/29* sometime in mid-2025 (when Debian trixie is released).  For a backwards-compatible library, try [[https://github.com/jwiegley/emacs-async][async.el]].
+
+2. For now, some limitations on FUNCALL's return value, which must always be a list with a fixed length, where the elements are themselves lists.  For example, the return value at the end of [[https://github.com/meedstrom/org-node/blob/use-el-job/org-node-parser.el][org-node-parser.el]]:
 
    #+begin_src elisp
-   (list (if missing-file (list missing-file))
-         (if file-mtime (list file-mtime))
-         found-nodes ;; always a list
-         org-node-parser--paths-types ;; always a list
-         org-node-parser--found-links ;; always a list
-         (if problem (list problem))))
+   (list (if missing-file (list missing-file)) ; List of 1 item or nil
+         (if file-mtime (list file-mtime))     ; List of 1 item or nil
+         found-nodes                           ; Always a list
+         org-node-parser--paths-types          ; Always a list
+         org-node-parser--found-links          ; Always a list
+         (if problem (list problem))))         ; List of 1 item or nil
    #+end_src
 
    May seem clunky when you return lists of only one item, but at least it is easy to extend.
 
-2. No keepalive: launching a job now just creates subprocesses to do one thing and then die.  This will change so that they can be kept alive to receive more inputs, skipping spin-up time.
+3. Some data types cannot be exchanged with the children: at least those whose printed form look like =#<...>=.
+
+   You can exchange hash tables and other records, they have no angle brackets and look like =#s(hash-table data ...)=, but you cannot send markers, obarrays, buffers, windows etc, they look like =#<obarray n=94311>=.  (Would you ever want to?)

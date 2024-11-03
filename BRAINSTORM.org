@@ -1,0 +1,51 @@
+* Priorities
+
+IRRELEVANT to optimize: The case of an anonymous job or a job with no inputs.
+
+Focus on the cases where multicore matters, an elapsed-table matters, and live standby processes matter.
+
+* Conflict resolution
+
+Allow reusing one elapsed-table even if LOCK is not set (determined by ID instead).  Should auto-assign a launch to use any of up to 7 ready processes.
+
+If LOCK is set, it essentially means that it will await all 7 processes, or terminate them (another flag?), before launching again.  Even if this particular job would only launch 1 process, it will wait until that one is done.
+
+* How to distribute inputs when some processes are busy
+
+I guess if LOCK is not set, it is fine to just split them over the remaining ready processes.
+
+A launch can be called with LOCK t, even if it had previously been called with it nil.  In this case... the queue is wiped and replaced with the new inputs?
+
+* How to queue
+
+- :lock nil
+- :lock 'wait-and-absorb-queue
+  - no 'wait-and-discard, you'd rarely want it, name just for clarity
+- :lock 'terminate-and-absorb-queue
+- :lock 'terminate-and-absorb-queue-and-previous-inputs
+  - Meh
+- :lock 'terminate-and-discard-queue
+
+
+* Wait, shit
+
+What about :results?!
+
+Maybe I'll forget about the whole "pass to any ready processes".  Or else use the el-job:results only when LOCK.
+
+Sooo the pseudo-sentinel does what? (it should be called "receive" or something)
+
+Well, if I wanted it to be stupidly flexible and parallel, --receive would have to pass the results to WRAPUP some other way than building the results-list, when LOCK is nil.
+
+But it may be easier to just always process the results before permitting another launch.
+
+To base the needs on org-node, it's really just like the old try-launch-scan.  In fact, I can use a different ID for the targeted scan so it can occur in parallel, since the benchmark does not matter.
+
+Question is just...
+
+Given the same ID,
+- launch may be called with :if-busy at either 'takeover, 'noop, 'wait (default), which determines what to do, but in any case, the count of processes will NOT change until all processes are done (or terminated) this time.
+- Maybe in future there can be a specialty :if-busy 'use-ready setting, which user should only declare, if they are certain that it does not matter.  E.g. there's no wrapup function to run or it can't be corrupted
+  - but passing data to wrapup would still have to come up with a new method.
+    Or...
+    Well, it /used to be/ that the "last sentinel" will merge the results.  Now it's determined by god knows what -- but maybe it is just the last "receive" call, which knows it is the last because there are no busy processes left.
