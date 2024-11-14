@@ -623,7 +623,7 @@ should trigger `el-job--receive'."
   (when (eq .method 'poll)
     (cancel-timer .poll-timer)
     (setf .poll-timer
-          (run-with-timer 0.1 nil #'el-job--poll .busy .poll-timer 0.1)))))
+          (run-with-timer 0.1 nil #'el-job--poll .busy .poll-timer 0.1))))
 
 (defun el-job--timeout (id)
   "If PROC "
