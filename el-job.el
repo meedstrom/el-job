@@ -249,7 +249,7 @@ See `el-job-child--zip' for details."
 
 ;;; Main logic:
 
-;; Compare the perfs on your machine!  If you use org-node:
+;; Compare these methods' perfs on your machine.  If you use org-node:
 ;; 1. Evaluate: (progn (setq el-job-default-method 'poll) (el-job-kill-all))
 ;; 2. Do a few times: M-x org-node-reset
 (defvar el-job-default-method
