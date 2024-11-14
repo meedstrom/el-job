@@ -342,6 +342,7 @@ Safely return nil otherwise, whether or not ID is known."
   (when-let ((job (gethash id el-jobs)))
     (el-job:busy job)))
 
+;;;###autoload
 (cl-defun el-job-launch (&key load
                               inject-vars
                               eval-once

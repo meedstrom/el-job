@@ -1,6 +1,5 @@
+#+TITLE: el-job
 #+HTML: <a href="https://melpa.org/#/el-job"><img alt="MELPA" src="https://melpa.org/packages/el-job-badge.svg"/></a> <a href="https://stable.melpa.org/#/el-job"><img alt="MELPA Stable" src="https://stable.melpa.org/packages/el-job-badge.svg"/></a>
-
-* el-job
 
 Imagine you have a function you'd like to run on a long list of inputs.  You could run =(mapcar #'FN INPUTS)=, but that hangs Emacs until done.
 
