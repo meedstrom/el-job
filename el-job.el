@@ -52,8 +52,7 @@ At level 0, display as warning."
   (declare (indent 2))
   (if (<= level el-job--debug-level)
       (if (> level 0)
-          (message (concat (format "(el-job debug:%d) " level) fmt)
-                   args)
+          (apply #'message fmt args)
         (display-warning 'el-job (apply #'format-message fmt args)))))
 
 (defun el-job--find-lib (feature)
@@ -294,6 +293,7 @@ only the max interval between two polls.")
   stderr
   (timestamps (list :accept-launch-request (time-convert nil t)))
   (poll-timer (timer-create))
+  (timeout (timer-create))
   finish-times
   (past-elapsed (make-hash-table :test #'equal))
   spawn-args
@@ -591,42 +591,41 @@ should trigger `el-job--receive'."
       ( .ready .busy .input-sets .results .queue .cores .past-elapsed
         .benchmark .timestamps .poll-timer .finish-times .anonymous .method
         .id .timeout )
-    (cancel-timer .timeout))
-  (setf .results nil)
-  (setf .finish-times nil)
-  (let ((splits (el-job--split-optimally .queue .cores .past-elapsed)))
-    (unless (length< splits (1+ (length .ready)))
-      (error "Items split in %d lists, but only %d ready processes"
-             (length splits) (length .ready)))
-    (let ((print-length nil)
-          (print-level nil)
-          (print-circle t)
-          (print-symbols-bare t)
-          (print-escape-newlines t)
-          items proc)
-      (while splits
-        (setq items (pop splits))
-        (cl-assert .ready)
-        (setq proc (pop .ready))
-        (push proc .busy)
-        (when .benchmark
-          (setf (alist-get proc .input-sets) items))
-        (with-current-buffer (process-buffer proc)
-          (erase-buffer)
-          (process-send-string proc (prin1-to-string items))
-          (process-send-string proc "\n")
-          (when (eq .method 'reap)
-            (process-send-string proc "die\n"))))))
-  (setf .queue nil)
-  (plist-put .timestamps :launched (time-convert nil t))
-  (setf .timeout (run-with-timer 30 nil #'el-job--timeout .id))
-  (when (eq .method 'poll)
-    (cancel-timer .poll-timer)
-    (setf .poll-timer
-          (run-with-timer 0.1 nil #'el-job--poll .busy .poll-timer 0.1))))
+    (cancel-timer .timeout)
+    (setf .results nil)
+    (setf .finish-times nil)
+    (let ((splits (el-job--split-optimally .queue .cores .past-elapsed)))
+      (unless (length< splits (1+ (length .ready)))
+        (error "Items split in %d lists, but only %d ready processes"
+               (length splits) (length .ready)))
+      (let ((print-length nil)
+            (print-level nil)
+            (print-circle t)
+            (print-symbols-bare t)
+            (print-escape-newlines t)
+            items proc)
+        (while splits
+          (setq items (pop splits))
+          (cl-assert .ready)
+          (setq proc (pop .ready))
+          (push proc .busy)
+          (when .benchmark
+            (setf (alist-get proc .input-sets) items))
+          (with-current-buffer (process-buffer proc)
+            (erase-buffer)
+            (process-send-string proc (prin1-to-string items))
+            (process-send-string proc "\n")
+            (when (eq .method 'reap)
+              (process-send-string proc "die\n"))))))
+    (setf .queue nil)
+    (plist-put .timestamps :launched (time-convert nil t))
+    (setf .timeout (run-with-timer 30 nil #'el-job--timeout .id))
+    (when (eq .method 'poll)
+      (cancel-timer .poll-timer)
+      (setf .poll-timer
+            (run-with-timer 0.1 nil #'el-job--poll .busy .poll-timer 0.1)))))
 
 (defun el-job--timeout (id)
-  "If PROC "
   (let ((job (gethash id el-jobs)))
     (if (and job (el-job:busy job))
         (progn
