@@ -54,11 +54,15 @@ and each element in them must be a proper list or nil."
 (defvar el-job-child--ready nil)
 (defun el-job-child--work (func benchmark)
   "Handle input from mother process `el-job--exec' and print a result.
+
+Since `print' prints to standard output, it would be expected to
+be passed to a function in the mother process, called the process
+filter.
+
 Assume the input is a list of arguments to pass to FUNC one at a time.
 FUNC comes from the :funcall argument of `el-job-launch'.
 
-BENCHMARK is expected to be nil if this is an anonymous \(run-once)
-job.  If t, benchmark how long FUNC took to handle each item, and
+If BENCHMARK t, benchmark how long FUNC took to handle each item, and
 add that information to the final return value."
   (unless el-job-child--ready
     (setq el-job-child--ready t)

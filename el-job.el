@@ -57,9 +57,9 @@ At level 0, display as warning."
 
 (defun el-job--find-lib (feature)
   "Look for .eln, .elc or .el file corresponding to FEATURE.
-FEATURE is a symbol as it shows up in `features'.
+FEATURE is a symbol such as those seen in `features'.
 
-Guess which one was in fact loaded by the current Emacs,
+Guess which variant was in fact loaded by the current Emacs,
 and return it if it is .elc or .eln.
 
 If it is .el, then opportunistically compile it and return the newly
@@ -276,7 +276,10 @@ If you change this setting, remember to run \\[el-job-kill-all].")
 Note that total wait time will be perhaps the double or triple; this is
 only the max interval between two polls.")
 
-(defvar el-job--cores nil)
+(defvar el-job--cores nil
+  "Max amount of processes to spawn for one job.
+Usually the number of logical cores on your machine minus 1.")
+
 (defvar el-jobs (make-hash-table :test #'eq))
 (cl-defstruct (el-job (:constructor el-job--make)
                       (:copier nil)
@@ -336,12 +339,6 @@ See `el-job-launch' for arguments."
     (el-job--spawn-processes job load inject-vars eval-once funcall)
     (el-job--exec job)))
 
-(defun el-job-is-busy (id)
-  "Return list of busy processes for job ID, if any.
-Safely return nil otherwise, whether or not ID is known."
-  (when-let ((job (gethash id el-jobs)))
-    (el-job:busy job)))
-
 ;;;###autoload
 (cl-defun el-job-launch (&key load
                               inject-vars
@@ -386,9 +383,8 @@ find that Emacs Lisp file; that file should end with a `provide' call on
 the same symbol.  LOAD can also be a list of several symbols.
 
 While subprocesses do not inherit `load-path', it is the mother Emacs
-process that locates that file \(by inspecting `load-history', see
-`el-job--find-lib' for particulars), then gives the file to the
-subprocess.
+process that locates that file \(by inspecting `load-history', via
+`el-job--find-lib'), then gives the file to the subprocess.
 
 Due to the absence of `load-path', be careful writing `require'
 statements into that Emacs Lisp file.  You can pass `load-path' via
@@ -551,7 +547,7 @@ For the rest of the arguments, see `el-job-launch'."
                     :connection-type 'pipe
                     ;; https://github.com/jwiegley/emacs-async/issues/165
                     :coding 'utf-8-emacs-unix
-                    :stderr (el-job:stderr job)
+                    :stderr .stderr
                     :buffer (get-buffer-create (format " *el-job-%s:%d*" .id i) t)
                     :command command
                     :sentinel #'ignore))
@@ -570,17 +566,6 @@ For the rest of the arguments, see `el-job-launch'."
         (process-send-string proc (or eval-once "nil"))
         (process-send-string proc "\n")
         (push proc .ready)))))
-
-(defun el-job--await (id timeout &optional message)
-  (let ((deadline (time-add (current-time) timeout)))
-    (catch 'timeout
-      (while (el-job-is-busy id)
-        (discard-input)
-        (if (time-less-p (current-time) deadline)
-            (progn (unless (current-message) (message message))
-                   (sit-for 0.1))
-          (throw 'timeout nil)))
-      t)))
 
 (defun el-job--exec (job)
   "Split the queued inputs in JOB and pass to all children.
@@ -627,6 +612,7 @@ should trigger `el-job--receive'."
             (run-with-timer 0.1 nil #'el-job--poll .busy .poll-timer 0.1)))))
 
 (defun el-job--timeout (id)
+  "Terminate job by ID, and print that it timed out."
   (let ((job (gethash id el-jobs)))
     (if (and job (el-job:busy job))
         (progn
@@ -635,23 +621,6 @@ should trigger `el-job--receive'."
                    (el-job:id job)))
       (el-job--dbg 1
           "Timeout timer should have been cancelled for el-job ID %s" id))))
-
-(defun el-job--sentinel (proc event)
-  "Given finished process PROC, run `el-job--receive' appropriately."
-  (with-current-buffer (process-buffer proc)
-    (if (and (equal event "finished\n")
-             (eq (process-status proc) 'exit)
-             (eq (process-exit-status proc) 0))
-        (el-job--receive proc)
-      (el-job--unhide-buffer (current-buffer))
-      (el-job--unhide-buffer (el-job:stderr el-job-here))
-      (message "Child had problems, check buffer %s" (buffer-name)))))
-
-(defun el-job--receive-in-buffer-if-done (&rest _)
-  "Handle output in current buffer if it appears complete.
-Can be called in a process buffer at any time."
-  (if (eq (char-before) ?\n)
-      (el-job--receive)))
 
 (defun el-job--poll (procs timer delay)
   "Try to run `el-job--receive' in each buffer associated with PROCS.
@@ -676,6 +645,24 @@ Processes killed: %S" (truncate (* 2 el-job--global-timeout)) procs)
       (timer-set-time timer (time-add delay (time-convert nil t)))
       (timer-set-function timer #'el-job--poll (list procs timer delay))
       (timer-activate timer))))
+
+(defun el-job--sentinel (proc event)
+  "Handle the output in buffer of finished process PROC.
+For arguments PROC and EVENT, see Info node `(elisp) Sentinels'."
+  (with-current-buffer (process-buffer proc)
+    (if (and (equal event "finished\n")
+             (eq (process-status proc) 'exit)
+             (eq (process-exit-status proc) 0))
+        (el-job--receive proc)
+      (el-job--unhide-buffer (current-buffer))
+      (el-job--unhide-buffer (el-job:stderr el-job-here))
+      (message "Child had problems, check buffer %s" (buffer-name)))))
+
+(defun el-job--receive-in-buffer-if-done (&rest _)
+  "Handle output in current buffer if it appears complete.
+Can be called in a process buffer at any time."
+  (if (eq (char-before) ?\n)
+      (el-job--receive)))
 
 (defun el-job--receive (&optional proc)
   "Handle output in current buffer.
@@ -750,6 +737,11 @@ This kills all process buffers, but does not deregister the ID from
   (when-let ((stderr (el-job:stderr job)))
     (kill-buffer stderr)))
 
+(defun el-job--unhide-buffer (buf)
+  "Rename BUFFER to omit intiial space, and return new name."
+  (with-current-buffer buf
+    (rename-buffer (string-trim-left (buffer-name)))))
+
 (defun el-job--kill-quietly-keep-buffer (proc)
   "Kill PROC while silencing its sentinel and filter.
 See `el-job--kill-quietly' to also kill the buffer."
@@ -764,6 +756,9 @@ Prevent its sentinel and filter from reacting."
     (el-job--kill-quietly-keep-buffer proc)
     (kill-buffer buf)))
 
+
+;;; Tools; maybe bless some as public API?
+
 (defun el-job-kill-all ()
   "Kill all el-jobs and forget metadata."
   (interactive)
@@ -771,11 +766,6 @@ Prevent its sentinel and filter from reacting."
              (el-job--terminate job)
              (remhash id el-jobs))
            el-jobs))
-
-(defun el-job--unhide-buffer (buf)
-  "Rename BUFFER to omit intiial space, and return new name."
-  (with-current-buffer buf
-    (rename-buffer (string-trim-left (buffer-name)))))
 
 (defun el-job--all-processes (job)
   "Return all processes for JOB, busy and ready."
@@ -791,6 +781,23 @@ Prevent its sentinel and filter from reacting."
       (pp-buffer)
       (switch-to-buffer (current-buffer)))
     t))
+
+(defun el-job--await (id timeout &optional message)
+  (let ((deadline (time-add (current-time) timeout)))
+    (catch 'timeout
+      (while (el-job-is-busy id)
+        (discard-input)
+        (if (time-less-p (current-time) deadline)
+            (progn (unless (current-message) (message message))
+                   (sit-for 0.1))
+          (throw 'timeout nil)))
+      t)))
+
+(defun el-job-is-busy (id)
+  "Return list of busy processes for job ID, if any.
+Safely return nil otherwise, whether or not ID is known."
+  (when-let ((job (gethash id el-jobs)))
+    (el-job:busy job)))
 
 (provide 'el-job)
 
