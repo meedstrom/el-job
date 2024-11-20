@@ -550,7 +550,8 @@ For the rest of the arguments, see `el-job-launch'."
                     :stderr .stderr
                     :buffer (with-current-buffer
                                 (get-buffer-create (format " *el-job-%s:%d*" .id i) t)
-                              (set-buffer-multibyte t))
+                              (set-buffer-multibyte t)
+                              (current-buffer))
                     :command command
                     :sentinel #'ignore))
         (when (string-suffix-p ">" (process-name proc))
