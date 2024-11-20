@@ -89,6 +89,7 @@ add that information to the final return value."
         (push (time-convert nil t) meta)
         (let ((print-length nil)
               (print-level nil)
+              (coding-system-for-write 'utf-8-emacs-unix)
               (print-circle t)
               (print-escape-newlines t)
               (print-escape-nonascii t)
