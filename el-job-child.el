@@ -91,6 +91,7 @@ add that information to the final return value."
               (print-level nil)
               (print-circle t)
               (print-escape-newlines t)
+              (print-escape-nonascii t)
               (print-symbols-bare t))
           (print (cons meta results)))))))
 

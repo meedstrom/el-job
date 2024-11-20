@@ -548,7 +548,9 @@ For the rest of the arguments, see `el-job-launch'."
                     ;; https://github.com/jwiegley/emacs-async/issues/165
                     :coding 'utf-8-emacs-unix
                     :stderr .stderr
-                    :buffer (get-buffer-create (format " *el-job-%s:%d*" .id i) t)
+                    :buffer (with-current-buffer
+                                (get-buffer-create (format " *el-job-%s:%d*" .id i) t)
+                              (set-buffer-multibyte t))
                     :command command
                     :sentinel #'ignore))
         (when (string-suffix-p ">" (process-name proc))
