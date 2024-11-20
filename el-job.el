@@ -517,7 +517,7 @@ For the rest of the arguments, see `el-job-launch'."
            (print-circle t)
            (print-symbols-bare t)
            (print-escape-newlines t)
-           (print-escape-nonascii t)
+           (print-escape-nonascii t) ;; Prolly unnecessary
            (vars (prin1-to-string
                   (cl-loop for var in inject-vars
                            if (symbolp var)
@@ -548,10 +548,7 @@ For the rest of the arguments, see `el-job-launch'."
                     ;; https://github.com/jwiegley/emacs-async/issues/165
                     :coding 'utf-8-emacs-unix
                     :stderr .stderr
-                    :buffer (with-current-buffer
-                                (get-buffer-create (format " *el-job-%s:%d*" .id i) t)
-                              (set-buffer-multibyte t)
-                              (current-buffer))
+                    :buffer (get-buffer-create (format " *el-job-%s:%d*" .id i) t)
                     :command command
                     :sentinel #'ignore))
         (when (string-suffix-p ">" (process-name proc))

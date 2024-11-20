@@ -89,10 +89,12 @@ add that information to the final return value."
         (push (time-convert nil t) meta)
         (let ((print-length nil)
               (print-level nil)
+              ;; Even though we had set :coding 'utf-8-emacs-unix in the
+              ;; process buffer, this is still necessary.
+              ;; https://github.com/meedstrom/org-node/issues/70
               (coding-system-for-write 'utf-8-emacs-unix)
               (print-circle t)
               (print-escape-newlines t)
-              (print-escape-nonascii t)
               (print-symbols-bare t))
           (print (cons meta results)))))))
 
