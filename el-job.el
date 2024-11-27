@@ -473,7 +473,8 @@ evaluated many times."
           (if .busy
               (pcase if-busy
                 ('takeover (setq respawn t)
-                           (setq exec t))
+                           (setq exec t)
+                           (setf .queue inputs))
                 ('wait (setf .queue (append inputs .queue))))
             (setf .queue inputs)
             (setq exec t))
