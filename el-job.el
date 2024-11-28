@@ -186,40 +186,46 @@ being saddled with a mega-item in addition to the average workload."
           ;; Loop over items again now that we have the total...
           (catch 'filled
             (while-let ((item (pop items)))
-              (setq dur (float-time (or (gethash item table) 0)))
-              (if (null dur)
-                  (push item untimed)
-                (if (> dur max-per-core)
-                    ;; Dedicate huge items to their own .cores
-                    (push (list item) sublists)
-                  (if (< dur (- max-per-core this-sublist-sum))
-                      (progn
-                        (push item this-sublist)
-                        (setq this-sublist-sum (+ this-sublist-sum dur)))
-                    (push this-sublist sublists)
-                    (setq this-sublist-sum 0)
-                    (setq this-sublist nil)
-                    (push item items)
-                    (when (= (length sublists) n)
-                      (throw 'filled t)))))))
-          ;; Let last sublist absorb all untimed
+              (if (length= sublists n)
+                  (progn (push item items)
+                         (throw 'filled t))
+                (setq dur (float-time (or (gethash item table) 0)))
+                (if (null dur)
+                    (push item untimed)
+                  (if (> dur max-per-core)
+                      ;; Dedicate huge items to their own cores
+                      (push (list item) sublists)
+                    (if (< dur (- max-per-core this-sublist-sum))
+                        (progn
+                          (push item this-sublist)
+                          (setq this-sublist-sum (+ this-sublist-sum dur)))
+                      ;; This sublist hit time limit, so it's done.
+                      ;; Next iteration will begin a new sublist (or throw).
+                      (push this-sublist sublists)
+                      (setq this-sublist-sum 0)
+                      (setq this-sublist nil)
+                      (push item items)))))))
+          ;; If last sublist did not hit time limit, let it absorb any
+          ;; remaining items.  (Sloppy, but benchmarks should make it
+          ;; moot for next time.)
           (if this-sublist
-              (progn
-                (push (nconc untimed this-sublist) sublists)
-                (when items
-                  (message "el-job: ITEMS surprisingly not empty: %s" items)))
+              (push (nconc untimed items this-sublist) sublists)
             ;; Last sublist already hit time limit, spread leftovers equally
             (let ((ctr 0)
                   (len (length sublists)))
               (if (= len 0)
-                  ;; All items are untimed
-                  ;; REVIEW: Code never ends up here, right?
-                  (progn
-                    (setq sublists (el-job--split-evenly untimed n))
-                    (message "el-job: Unexpected code path.  Not fatal, but report appreciated!  Result: %S"
-                             sublists))
+                  (unless (not (equal total-duration (time-convert 0 t)))
+                    (error "el-job: Unexpected code path, report appreciated! Result: %S"
+                           (list 'max-per-core max-per-core
+                                 'this-sublist-sum this-sublist-sum
+                                 'n n
+                                 'untimed untimed
+                                 'items items
+                                 'sublists sublists
+                                 'this-sublist this-sublist)))
                 (dolist (item (nconc untimed items))
-                  (push item (nth (% (cl-incf ctr) len) sublists))))))
+                  (push item (nth (% (cl-incf ctr) len)
+                                  sublists))))))
           sublists)))))
 
 (defun el-job--split-evenly (big-list n)
