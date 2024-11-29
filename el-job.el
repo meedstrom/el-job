@@ -99,9 +99,10 @@ Note: if you are currently editing the source code for FEATURE, use
     (unless loaded
       (error "Current Lisp definitions must come from a file %S[.el/.elc/.eln]"
              feature))
-    ;; HACK: Sometimes comp.el makes freefn- temp files; pretend we found .el.
-    ;;       Bad hack, because load-path is NOT as trustworthy as load-history
-    ;;       (current Emacs may not be using the thing in load-path).
+    ;; HACK: Sometimes comp.el makes freefn- temp files; pretend we found the
+    ;;       .el that's in load-path, instead.  Bad hack, because load-path is
+    ;;       NOT as trustworthy as load-history (current Emacs may not be using
+    ;;       the thing in load-path).
     (when (string-search "freefn-" loaded)
       (setq loaded
             (locate-file (symbol-name feature) load-path '(".el" ".el.gz"))))
@@ -147,9 +148,7 @@ Note: if you are currently editing the source code for FEATURE, use
       loaded)))
 
 ;; TODO: Never accept nil as a benchmarked input
-;; TODO: Guarantee that it always returns a list of non-empty lists. (Non-empty
-;;       meaning each does contain members of ITEMS). Easier to reason about
-;;       mistakes in the code later.
+;; TODO: Write some tests (make a fake table)
 (defun el-job--split-optimally (items n table)
   "Split ITEMS into up to N lists of items.
 
@@ -195,34 +194,35 @@ being saddled with a mega-item in addition to the average workload."
                   (if (> dur max-per-core)
                       ;; Dedicate huge items to their own cores
                       (push (list item) sublists)
+                    ;; Grow a sublist unless it would hit the max
                     (if (< dur (- max-per-core this-sublist-sum))
                         (progn
                           (push item this-sublist)
                           (setq this-sublist-sum (+ this-sublist-sum dur)))
-                      ;; This sublist hit time limit, so it's done.
+                      ;; This sublist hit max, so it's done.
                       ;; Next iteration will begin a new sublist (or throw).
                       (push this-sublist sublists)
                       (setq this-sublist-sum 0)
                       (setq this-sublist nil)
                       (push item items)))))))
-          ;; If last sublist did not hit time limit, let it absorb any
-          ;; remaining items.  (Sloppy, but benchmarks should make it
-          ;; moot for next time.)
+          ;; If last sublist did not hit the max, let it absorb any remaining
+          ;; items.  (Sloppy as there could be a lot in special cases, but
+          ;; benchmarks should make it moot for next time.)
           (if this-sublist
               (push (nconc untimed items this-sublist) sublists)
             ;; Last sublist already hit time limit, spread leftovers equally
             (let ((ctr 0)
                   (len (length sublists)))
               (if (= len 0)
-                  (unless (not (equal total-duration (time-convert 0 t)))
-                    (error "el-job: Unexpected code path, report appreciated! Result: %S"
-                           (list 'max-per-core max-per-core
-                                 'this-sublist-sum this-sublist-sum
-                                 'n n
-                                 'untimed untimed
-                                 'items items
-                                 'sublists sublists
-                                 'this-sublist this-sublist)))
+                  (error "el-job: Unexpected code path, report appreciated! Data: %S"
+                         (list 'n n
+                               'total-duration total-duration
+                               'max-per-core max-per-core
+                               'this-sublist-sum this-sublist-sum
+                               'untimed untimed
+                               'items items
+                               'sublists sublists
+                               'this-sublist this-sublist))
                 (dolist (item (nconc untimed items))
                   (push item (nth (% (cl-incf ctr) len)
                                   sublists))))))
