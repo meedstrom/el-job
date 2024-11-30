@@ -485,19 +485,20 @@ evaluated many times."
             (setf .queue inputs)
             (setq exec t))
           (when exec
+            ;; Only increment to e.g. 7 standby processes if it was ever called
+            ;; with 7+ inputs at the same time
+            (when (< .cores el-job--cores)
+              (setf .cores (min el-job--cores (max .cores (length .queue)))))
             (when (eq .method 'reap)
               (setq respawn t))
             (when (or (eq .method 'change-hook)
                       (eq .method 'poll))
               ;; TODO: Skip this check, just react on `process-send-string' fail
-              (unless (and (seq-every-p #'process-live-p .ready)
+              (unless (and (= .cores (+ (length .busy) (length .ready)))
+                           (seq-every-p #'process-live-p .ready)
                            (seq-every-p #'process-live-p .busy))
                 (el-job--dbg 1 "Found dead processes, resetting job %s" id)
                 (setq respawn t)))
-            ;; Only increment to e.g. 7 standby processes if it was ever called
-            ;; with 7+ inputs at the same time
-            (when (< .cores el-job--cores)
-              (setf .cores (min el-job--cores (max .cores (length .queue)))))
             (setq arg-signature (+ arg-signature .cores))
             (when (/= .sig arg-signature)
               (setf .sig arg-signature)
