@@ -728,6 +728,7 @@ If nil, infer it from the buffer, if process is still alive."
           ;; Now there's more in the queue, run again at next good opportunity.
           (when .queue
             (when (eq .method 'reap)
+              (el-job--terminate job)
               (apply #'el-job--spawn-processes (el-job:spawn-args job)))
             (el-job--exec job))))))
   t)
@@ -746,12 +747,12 @@ This kills all process buffers, but does not deregister the ID from
     (kill-buffer stderr)))
 
 (defun el-job--unhide-buffer (buf)
-  "Rename BUFFER to omit intiial space, and return new name."
+  "Rename BUFFER to omit initial space, and return new name."
   (with-current-buffer buf
     (rename-buffer (string-trim-left (buffer-name)))))
 
 (defun el-job--kill-quietly-keep-buffer (proc)
-  "Kill PROC while silencing its sentinel and filter.
+  "Kill PROC while disabling its sentinel and filter.
 See `el-job--kill-quietly' to also kill the buffer."
   (set-process-filter proc #'ignore)
   (set-process-sentinel proc #'ignore)
