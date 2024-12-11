@@ -503,13 +503,13 @@ evaluated many times."
               (setf .spawn-args (list job load inject-vars eval-once funcall))
               (el-job--dbg 2 "New arguments, resetting job %s" id)
               (setq respawn t))
+            (setf .wrapup wrapup)
             (when respawn
               (el-job--terminate job)
               (when method
                 (setf .method method))
               (setf .benchmark (not skip-benchmark))
               (el-job--spawn-processes job load inject-vars eval-once funcall))
-            (setf .wrapup wrapup)
             (el-job--exec job)
             t))))))
 
@@ -546,32 +546,37 @@ For the rest of the arguments, see `el-job-launch'."
                 (get-buffer-create (format " *el-job-%s:err*" .id) t)
               (erase-buffer)
               (current-buffer)))
-      (dotimes (i .cores)
-        (setq proc (make-process
-                    :name (format "el-job:%s:%d" .id i)
-                    :noquery t
-                    :connection-type 'pipe
-                    ;; https://github.com/jwiegley/emacs-async/issues/165
-                    :coding 'utf-8-emacs-unix
-                    :stderr .stderr
-                    :buffer (get-buffer-create (format " *el-job-%s:%d*" .id i) t)
-                    :command command
-                    :sentinel #'ignore))
-        (when (string-suffix-p ">" (process-name proc))
-          (el-job--dbg 1 "Unintended duplicate process id for %s" proc))
-        (with-current-buffer (process-buffer proc)
-          (setq-local el-job-here job)
-          (pcase .method
-            ('change-hook (add-hook 'after-change-functions
-                                    #'el-job--receive-in-buffer-if-done nil t))
-            ('reap (set-process-sentinel proc #'el-job--sentinel))))
-        (process-send-string proc vars)
-        (process-send-string proc "\n")
-        (process-send-string proc libs)
-        (process-send-string proc "\n")
-        (process-send-string proc (or eval-once "nil"))
-        (process-send-string proc "\n")
-        (push proc .ready)))))
+      (condition-case err
+          (dotimes (i .cores)
+            (setq proc (make-process
+                        :name (format "el-job:%s:%d" .id i)
+                        :noquery t
+                        :connection-type 'pipe
+                        ;; https://github.com/jwiegley/emacs-async/issues/165
+                        :coding 'utf-8-emacs-unix
+                        :stderr .stderr
+                        :buffer (get-buffer-create (format " *el-job-%s:%d*" .id i) t)
+                        :command command
+                        :sentinel #'ignore))
+            (when (string-suffix-p ">" (process-name proc))
+              (el-job--dbg 1 "Unintended duplicate process id for %s" proc))
+            (with-current-buffer (process-buffer proc)
+              (setq-local el-job-here job)
+              (pcase .method
+                ('change-hook (add-hook 'after-change-functions
+                                        #'el-job--receive-in-buffer-if-done nil t))
+                ('reap (set-process-sentinel proc #'el-job--sentinel))))
+            (process-send-string proc vars)
+            (process-send-string proc "\n")
+            (process-send-string proc libs)
+            (process-send-string proc "\n")
+            (process-send-string proc (or eval-once "nil"))
+            (process-send-string proc "\n")
+            (push proc .ready))
+        ;; https://github.com/meedstrom/org-node/issues/75
+        (( file-error )
+         (el-job--terminate job)
+         (error "Terminated el-job because of %S" err))))))
 
 (defun el-job--exec (job)
   "Split the queued inputs in JOB and pass to all children.
