@@ -186,13 +186,14 @@ being saddled with a mega-item in addition to the average workload."
               (if (length= sublists n)
                   (progn (push item items)
                          (throw 'filled t))
-                (setq dur (float-time (or (gethash item table) 0)))
+                (setq dur (gethash item table))
                 (if (null dur)
                     (push item untimed)
+                  (setq dur (float-time dur))
                   (if (> dur max-per-core)
                       ;; Dedicate huge items to their own cores
                       (push (list item) sublists)
-                    ;; Grow a sublist unless it would hit the max
+                    ;; Grow a sublist unless it would exceed the max
                     (if (< dur (- max-per-core this-sublist-sum))
                         (progn
                           (push item this-sublist)
@@ -203,27 +204,22 @@ being saddled with a mega-item in addition to the average workload."
                       (setq this-sublist-sum 0)
                       (setq this-sublist nil)
                       (push item items)))))))
-          (if this-sublist
-              ;; Last sublist did not max out, let it absorb all remaining
-              ;; items.  (Sloppy, as there could be a lot in special cases, but
-              ;; benchmarks should make it moot for next time.)
-              (push (nconc untimed items this-sublist) sublists)
-            ;; Last sublist already hit max, spread leftovers equally
-            (let ((ctr 0)
-                  (len (length sublists)))
-              (if (= len 0)
-                  (error "el-job: Unexpected code path, report appreciated! Data: %S"
-                         (list 'n n
-                               'total-duration total-duration
-                               'max-per-core max-per-core
-                               'this-sublist-sum this-sublist-sum
-                               'untimed untimed
-                               'items items
-                               'sublists sublists
-                               'this-sublist this-sublist))
-                (dolist (item (nconc untimed items))
-                  (push item (nth (% (cl-incf ctr) len)
-                                  sublists))))))
+          ;; Spread leftovers equally
+          (let ((ctr 0)
+                (len (length sublists)))
+            (if (= len 0)
+                (error "el-job: Unexpected code path, report appreciated! Data: %S"
+                       (list 'n n
+                             'total-duration total-duration
+                             'max-per-core max-per-core
+                             'this-sublist-sum this-sublist-sum
+                             'untimed untimed
+                             'items items
+                             'sublists sublists
+                             'this-sublist this-sublist))
+              (dolist (item (nconc this-sublist untimed items))
+                (push item (nth (% (cl-incf ctr) len)
+                                sublists)))))
           sublists)))))
 
 (defun el-job--split-evenly (big-list n)
