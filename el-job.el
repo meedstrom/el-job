@@ -148,7 +148,6 @@ Note: if you are currently editing the source code for FEATURE, use
       loaded)))
 
 ;; TODO: Never accept nil as a benchmarked input
-;; TODO: Write some tests (make a fake table)
 (defun el-job--split-optimally (items n table)
   "Split ITEMS into up to N lists of items.
 
@@ -182,7 +181,6 @@ being saddled with a mega-item in addition to the average workload."
               this-sublist
               untimed
               dur)
-          ;; Loop over items again now that we have the total...
           (catch 'filled
             (while-let ((item (pop items)))
               (if (length= sublists n)
@@ -205,12 +203,12 @@ being saddled with a mega-item in addition to the average workload."
                       (setq this-sublist-sum 0)
                       (setq this-sublist nil)
                       (push item items)))))))
-          ;; If last sublist did not hit the max, let it absorb any remaining
-          ;; items.  (Sloppy as there could be a lot in special cases, but
-          ;; benchmarks should make it moot for next time.)
           (if this-sublist
+              ;; Last sublist did not max out, let it absorb all remaining
+              ;; items.  (Sloppy, as there could be a lot in special cases, but
+              ;; benchmarks should make it moot for next time.)
               (push (nconc untimed items this-sublist) sublists)
-            ;; Last sublist already hit time limit, spread leftovers equally
+            ;; Last sublist already hit max, spread leftovers equally
             (let ((ctr 0)
                   (len (length sublists)))
               (if (= len 0)
@@ -786,9 +784,8 @@ Prevent its sentinel and filter from reacting."
   (let ((id (intern (completing-read "Get info on job: " el-jobs))))
     (with-current-buffer (get-buffer-create "*el-job*" t)
       (erase-buffer)
-      (cl-prin1 (gethash id el-jobs) (current-buffer))
-      (pp-buffer)
-      (switch-to-buffer (current-buffer)))
+      (switch-to-buffer (current-buffer))
+      (cl-prin1 (gethash id el-jobs) (current-buffer)))
     t))
 
 (defun el-job--await (id timeout &optional message)
