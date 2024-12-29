@@ -7,13 +7,6 @@ This library is a tool to split up the inputs and run the function in many subpr
 
 For real-world usage, search for =el-job-launch= in the source of [[https://github.com/meedstrom/org-node/blob/main/org-node.el][org-node.el]].
 
-** News
-
-Still in a development honeymoon, API unstable.
-
-- [2024-11-14 Thu 18:14]
-  - Version 0.3.0: Everything changed, so read the docstring again :-)
-
 ** Limitations
 
 1. Will *drop support for Emacs 28/29* sometime in mid-2025 (when Debian trixie is released).  For a backwards-compatible library, try [[https://github.com/jwiegley/emacs-async][async.el]].

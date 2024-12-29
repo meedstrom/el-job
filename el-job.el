@@ -765,7 +765,23 @@ Prevent its sentinel and filter from reacting."
     (kill-buffer buf)))
 
 
-;;; Tools; maybe bless some as public API?
+;;; Tools
+
+(defun el-job--all-processes (job)
+  "Return all processes for JOB, busy and ready."
+  (append (el-job:busy job) (el-job:ready job)))
+
+(defun el-job-show ()
+  "Prompt for a job and show its metadata in a new buffer."
+  (interactive)
+  (let* ((id (intern (completing-read "Get info on job: " el-jobs)))
+         (job (gethash id el-jobs)))
+    (when job
+      (switch-to-buffer (get-buffer-create "*el-job*" t))
+      (erase-buffer)
+      (cl-prin1 job (current-buffer))
+      ;; Never print the above into echo area
+      t)))
 
 (defun el-job-kill-all ()
   "Kill all el-jobs and forget metadata."
@@ -775,21 +791,13 @@ Prevent its sentinel and filter from reacting."
              (remhash id el-jobs))
            el-jobs))
 
-(defun el-job--all-processes (job)
-  "Return all processes for JOB, busy and ready."
-  (append (el-job:busy job) (el-job:ready job)))
+(defun el-job-await (id timeout &optional message)
+  "Block until all processes for job ID finished, then return t.
 
-(defun el-job--show ()
-  "Prompt for a job and show its metadata in a new buffer."
-  (interactive)
-  (let ((id (intern (completing-read "Get info on job: " el-jobs))))
-    (with-current-buffer (get-buffer-create "*el-job*" t)
-      (erase-buffer)
-      (switch-to-buffer (current-buffer))
-      (cl-prin1 (gethash id el-jobs) (current-buffer)))
-    t))
+If the job has still not finished after TIMEOUT seconds, stop
+blocking and return nil.
 
-(defun el-job--await (id timeout &optional message)
+Meanwhile, ensure string MESSAGE is visible in the minibuffer."
   (let ((deadline (time-add (current-time) timeout)))
     (catch 'timeout
       (while (el-job-is-busy id)
@@ -805,6 +813,9 @@ Prevent its sentinel and filter from reacting."
 Safely return nil otherwise, whether or not ID is known."
   (when-let ((job (gethash id el-jobs)))
     (el-job:busy job)))
+
+(define-obsolete-function-alias 'el-job--await 'el-job-await "2024-12-29")
+(define-obsolete-function-alias 'el-job--show 'el-job-show "2024-12-29")
 
 (provide 'el-job)
 
