@@ -147,7 +147,6 @@ Note: if you are currently editing the source code for FEATURE, use
       ;; up until the point the developer actually evals the .el buffer.
       loaded)))
 
-;; TODO: Never accept nil as a benchmarked input
 (defun el-job--split-optimally (items n table)
   "Split ITEMS into up to N lists of items.
 
@@ -160,67 +159,66 @@ take around the same total wall-time to work through this time.
 
 This reduces the risk that one child takes noticably longer due to
 being saddled with a mega-item in addition to the average workload."
-  (if (<= (length items) n)
-      (el-job--split-evenly items n)
-    (let ((total-duration (time-convert 0 t)))
-      (if (length= items (hash-table-count table))
-          ;; Shortcut (I think)
-          (maphash (lambda (_ dur)
-                     (setq total-duration (time-add total-duration dur)))
-                   table)
-        (let (dur)
-          (dolist (item items)
-            (when (setq dur (gethash item table))
-              (setq total-duration (time-add total-duration dur))))))
-      (if (equal total-duration (time-convert 0 t))
-          ;; Special case for first time
-          (el-job--split-evenly items n)
-        (let ((max-per-core (/ (float-time total-duration) n))
-              (this-sublist-sum 0)
-              sublists
-              this-sublist
-              untimed
-              dur)
-          (catch 'filled
-            (while-let ((item (pop items)))
-              (if (length= sublists n)
-                  (progn (push item items)
-                         (throw 'filled t))
-                (setq dur (gethash item table))
-                (if (null dur)
-                    (push item untimed)
-                  (setq dur (float-time dur))
-                  (if (> dur max-per-core)
-                      ;; Dedicate huge items to their own cores
-                      (push (list item) sublists)
-                    ;; Grow a sublist unless it would exceed the max
-                    (if (< dur (- max-per-core this-sublist-sum))
-                        (progn
-                          (push item this-sublist)
-                          (setq this-sublist-sum (+ this-sublist-sum dur)))
-                      ;; This sublist hit max, so it's done.
-                      ;; Next iteration will begin a new sublist (or throw).
-                      (push this-sublist sublists)
-                      (setq this-sublist-sum 0)
-                      (setq this-sublist nil)
-                      (push item items)))))))
-          ;; Spread leftovers equally
-          (let ((ctr 0)
-                (len (length sublists)))
-            (if (= len 0)
-                (error "el-job: Unexpected code path, report appreciated! Data: %S"
-                       (list 'n n
-                             'total-duration total-duration
-                             'max-per-core max-per-core
-                             'this-sublist-sum this-sublist-sum
-                             'untimed untimed
-                             'items items
-                             'sublists sublists
-                             'this-sublist this-sublist))
-              (dolist (item (nconc this-sublist untimed items))
-                (push item (nth (% (cl-incf ctr) len)
-                                sublists)))))
-          sublists)))))
+  (let ((total-duration (time-convert 0 t)))
+    (cond
+     ((= n 1)
+      (list items))
+     ((length< items (1+ n))
+      (el-job--split-evenly items n))
+     ((progn
+        (dolist (item items)
+          (when-let ((dur (gethash item table)))
+            (setq total-duration (time-add total-dura tion dur))))
+        (time-equal-p total-duration (time-convert 0 t)))
+      ;; Probably a first-time run
+      (el-job--split-evenly items n))
+     (t
+      (let ((max-per-core (/ (float-time total-duration) n))
+            (this-sublist-sum 0)
+            sublists
+            this-sublist
+            untimed
+            dur)
+        (catch 'filled
+          (while-let ((item (pop items)))
+            (if (length= sublists n)
+                (progn (push item items)
+                       (throw 'filled t))
+              (setq dur (gethash item table))
+              (if (null dur)
+                  (push item untimed)
+                (setq dur (float-time dur))
+                (if (> dur max-per-core)
+                    ;; Dedicate huge items to their own cores
+                    (push (list item) sublists)
+                  ;; Grow a sublist unless it would exceed the max
+                  (if (< dur (- max-per-core this-sublist-sum))
+                      (progn
+                        (push item this-sublist)
+                        (setq this-sublist-sum (+ this-sublist-sum dur)))
+                    ;; This sublist hit max, so it's done.
+                    ;; Next iteration will begin a new sublist (or throw).
+                    (push this-sublist sublists)
+                    (setq this-sublist-sum 0)
+                    (setq this-sublist nil)
+                    (push item items)))))))
+        ;; Spread leftovers equally
+        (let ((ctr 0)
+              (len (length sublists)))
+          (if (= len 0)
+              (error "el-job: Unexpected code path, report appreciated! Data: %S"
+                     (list 'n n
+                           'total-duration total-duration
+                           'max-per-core max-per-core
+                           'this-sublist-sum this-sublist-sum
+                           'untimed untimed
+                           'items items
+                           'sublists sublists
+                           'this-sublist this-sublist))
+            (dolist (item (nconc this-sublist untimed items))
+              (push item (nth (% (cl-incf ctr) len)
+                              sublists)))))
+        sublists)))))
 
 (defun el-job--split-evenly (big-list n)
   "Split BIG-LIST equally into a list of up to N sublists.
@@ -815,7 +813,6 @@ Safely return nil otherwise, whether or not ID is known."
     (el-job:busy job)))
 
 (define-obsolete-function-alias 'el-job--await 'el-job-await "2024-12-29")
-(define-obsolete-function-alias 'el-job--show 'el-job-show "2024-12-29")
 
 (provide 'el-job)
 
