@@ -168,7 +168,7 @@ being saddled with a mega-item in addition to the average workload."
      ((progn
         (dolist (item items)
           (when-let ((dur (gethash item table)))
-            (setq total-duration (time-add total-dura tion dur))))
+            (setq total-duration (time-add total-duration dur))))
         (time-equal-p total-duration (time-convert 0 t)))
       ;; Probably a first-time run
       (el-job--split-evenly items n))
