@@ -205,16 +205,27 @@ being saddled with a mega-item in addition to the average workload."
                       (progn
                         (push item this-sublist)
                         (setq this-sublist-sum (+ this-sublist-sum dur)))
-                    ;; This sublist hit max, so it's done.
-                    ;; Next iteration will begin a new sublist (or throw).
+                    ;; This sublist hit max, so it's done.  Cleanup for next
+                    ;; iteration, which will begin a new sublist (or throw).
                     (push this-sublist sublists)
                     (setq this-sublist-sum 0)
                     (setq this-sublist nil)
                     (push item items)))))))
-        ;; Spread leftovers equally
-        (let ((ctr 0)
-              (len (length sublists)))
-          (if (= len 0)
+        (if (length= sublists 0)
+            ;; Cover a special case that can prolly only occur when `n' = 1, in
+            ;; which case we should not arrive here, but...
+
+            ;; The first time `this-sublist' is populated, if it swallowed all
+            ;; members of `items', then we never arrive to the cleanup and so
+            ;; have to do it here.
+            (progn
+              (push this-sublist sublists)
+              (setq this-sublist nil)
+              ;; Actually, let's make it an error for a few months.  If no
+              ;; users report in, I probably thought correctly, and can snip
+              ;; this entire clause.
+              ;; Also add some graceful degradation.
+              (fset 'el-job--split-optimally 'el-job--split-evenly)
               (error "el-job: Unexpected code path, report appreciated! Data: %S"
                      (list 'n n
                            'total-duration total-duration
@@ -223,10 +234,14 @@ being saddled with a mega-item in addition to the average workload."
                            'untimed untimed
                            'items items
                            'sublists sublists
-                           'this-sublist this-sublist))
+                           'this-sublist this-sublist)))
+          ;; Spread leftovers equally
+          (let ((ctr 0)
+                (len (length sublists)))
             (dolist (item (nconc this-sublist untimed items))
-              (push item (nth (% (cl-incf ctr) len)
-                              sublists)))))
+              (push item (nth
+                          (% (cl-incf ctr) len)
+                          sublists)))))
         sublists)))))
 
 (defun el-job--split-evenly (big-list n)
