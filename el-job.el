@@ -104,7 +104,7 @@ compiled file instead.  This returns an .elc on the first call, then an
 .eln on future calls.
 
 Note: if you are currently editing the source code for FEATURE, save it
-and use \\[eval-buffer] to ensure thi will find the correct file."
+and use \\[eval-buffer] to ensure this will find the correct file."
   (let ((loaded (el-job--locate-lib-in-load-history feature)))
     (unless loaded
       (error "Current Lisp definitions must come from a file %S[.el/.elc/.eln]"
@@ -262,7 +262,7 @@ each element is wrapped in its own list."
 
 (defun el-job--zip-all (meta-lists)
   "Destructively zip all META-LISTS into one.
-See `el-job-child--zip' for details."
+See subroutine `el-job-child--zip' for details."
   (let ((merged (pop meta-lists)))
     (while meta-lists
       (setq merged (el-job-child--zip (pop meta-lists) merged)))
@@ -271,8 +271,8 @@ See `el-job-child--zip' for details."
 
 ;;; Main logic:
 
-;; Compare these methods' perfs on your machine.  If you use org-node:
-;; 1. Evaluate: (progn (setq el-job-default-method 'poll) (el-job-kill-all))
+;; If you use org-node, you can compare these methods' perfs on your machine.
+;; 1. Eval: (progn (setq el-job-default-method 'poll) (el-job-kill-all))
 ;; 2. Do a few times: M-x org-node-reset
 (defvar el-job-default-method
   (if (< emacs-major-version 30) 'reap 'change-hook)
@@ -767,9 +767,9 @@ This kills all process buffers, but does not deregister the ID from
   (when-let ((stderr (el-job:stderr job)))
     (kill-buffer stderr)))
 
-(defun el-job--unhide-buffer (buf)
+(defun el-job--unhide-buffer (buffer)
   "Rename BUFFER to omit initial space, and return new name."
-  (with-current-buffer buf
+  (with-current-buffer buffer
     (rename-buffer (string-trim-left (buffer-name)))))
 
 (defun el-job--kill-quietly-keep-buffer (proc)
