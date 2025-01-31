@@ -44,19 +44,56 @@
 
 ;;; Subroutines:
 
-(defvar el-job--debug-level 0)
+(defvar el-job--debug-level 0
+  "Increase this to 1 or 2 to see more debug messages.")
+
 (defun el-job--dbg (level fmt &rest args)
-  "If debugging is enabled, format FMT with ARGS and print.
+  "If debugging is enabled, format FMT with ARGS and print as message.
 LEVEL is the threshold for `el-job--debug-level' to unlock this warning.
-At level 0, display as warning."
+At LEVEL 0, don't just print a message, display a warning."
   (declare (indent 2))
   (if (<= level el-job--debug-level)
       (if (> level 0)
           (apply #'message fmt args)
         (display-warning 'el-job (apply #'format-message fmt args)))))
 
-(defun el-job--find-lib (feature)
-  "Look for .eln, .elc or .el file corresponding to FEATURE.
+(defun el-job--locate-lib-in-load-history (feature)
+  "Look for the .eln, .elc or .el file corresponding to FEATURE.
+FEATURE is a symbol such as those seen in `features'.
+
+Return whichever variant was in fact loaded by the current Emacs.
+
+Unusually, this looks in `load-history', not `load-path', so the result
+can change after you use `eval-buffer' in an .el file that you are
+editing."
+  (let ((hit
+         (cl-loop
+          for (file . elems) in load-history
+          when (eq feature (cdr (assq 'provide elems)))
+          return
+          ;; Want two pieces of info: the file path according to
+          ;; `load-history', and some function supposedly defined
+          ;; there.  The function is a better source of info, for
+          ;; discovering an .eln.
+          (cons file (cl-loop
+                      for elem in elems
+                      when (and (consp elem)
+                                (eq 'defun (car elem))
+                                (not (consp (symbol-function (cdr elem))))
+                                (not (function-alias-p (cdr elem))))
+                      return (cdr elem))))))
+    (or (and (native-comp-available-p)
+             (ignore-errors
+               ;; REVIEW: `symbol-file' uses expand-file-name,
+               ;;         but I'm not convinced it is needed
+               (expand-file-name
+                (native-comp-unit-file
+                 (subr-native-comp-unit
+                  (symbol-function (cdr hit)))))))
+        (car hit))))
+
+(defun el-job--ensure-compiled-lib (feature)
+  "Look for the .eln, .elc or .el file corresponding to FEATURE.
 FEATURE is a symbol such as those seen in `features'.
 
 Guess which variant was in fact loaded by the current Emacs,
@@ -66,36 +103,9 @@ If it is .el, then opportunistically compile it and return the newly
 compiled file instead.  This returns an .elc on the first call, then an
 .eln on future calls.
 
-Note: if you are currently editing the source code for FEATURE, use
-`eval-buffer' and save to ensure this finds the correct file."
-  (let* ((hit
-          (cl-loop
-           for (file . elems) in load-history
-           when (eq feature (cdr (assq 'provide elems)))
-           return
-           ;; Want two pieces of info: the file path according to
-           ;; `load-history', and some function supposedly defined
-           ;; there.  The function is a better source of info, for
-           ;; discovering an .eln.
-           (cons file (cl-loop
-                       for elem in elems
-                       when (and (consp elem)
-                                 (eq 'defun (car elem))
-                                 (not (consp (symbol-function (cdr elem))))
-                                 (not (function-alias-p (cdr elem))))
-                       return (cdr elem)))))
-         ;; Perf. Not confirmed necessary.
-         ;; TODO: Test if it can compile eln from el.gz with null handlers
-         (file-name-handler-alist '(("\\.gz\\'" . jka-compr-handler)))
-         (loaded (or (and (native-comp-available-p)
-                          (ignore-errors
-                            ;; REVIEW: `symbol-file' uses expand-file-name,
-                            ;;         but I'm not convinced it is needed
-                            (expand-file-name
-                             (native-comp-unit-file
-                              (subr-native-comp-unit
-                               (symbol-function (cdr hit)))))))
-                     (car hit))))
+Note: if you are currently editing the source code for FEATURE, save it
+and use \\[eval-buffer] to ensure thi will find the correct file."
+  (let ((loaded (el-job--locate-lib-in-load-history feature)))
     (unless loaded
       (error "Current Lisp definitions must come from a file %S[.el/.elc/.eln]"
              feature))
@@ -124,11 +134,11 @@ Note: if you are currently editing the source code for FEATURE, use
                 ;; always take precedence over the one shipped by Guix.  If we
                 ;; want to cover for that, it'd be safer to compile into /tmp
                 ;; with a filename based on emacs-init-time or something.
-                ;; See org-node issue #68.
+                ;; https://github.com/meedstrom/org-node/issues/68
                 (native-compile-async (list loaded)))
-              ;; Native comp may take a while, so return .elc this time.
-              ;; We should not pick an .elc from load path if Emacs is
-              ;; now running interpreted code, since the currently
+              ;; Native comp may take a while, so build and return .elc this
+              ;; time.  We should not pick a preexisting .elc from load path if
+              ;; Emacs is now running interpreted code, since that currently
               ;; running code is likely newer.
               (if (or (file-newer-than-file-p elc loaded)
                       (byte-compile-file loaded))
@@ -138,13 +148,12 @@ Note: if you are currently editing the source code for FEATURE, use
                   ;; after upgrades to .el, due to 1970 timestamps.
                   elc
                 loaded)))
-      ;; Either .eln or .elc was loaded, so use the same for the
-      ;; children.  We should not opportunistically build an .eln if
-      ;; Emacs had loaded an .elc for the current process, because we
-      ;; cannot assume the source .el is equivalent code.
-      ;; The .el could be in-development, newer than .elc, so
-      ;; children should use the old .elc for compatibility right
-      ;; up until the point the developer actually evals the .el buffer.
+      ;; Either .eln or .elc was loaded, so return the same.
+      ;; We should not opportunistically build an .eln if current Emacs process
+      ;; is using code from an .elc, because we cannot assume the source .el is
+      ;; equivalent code.  It could be in-development, newer than the .elc,
+      ;; so children should also use the .elc for compatibility right up until
+      ;; the point the developer actually evals the .el buffer.
       loaded)))
 
 (defun el-job--split-optimally (items n table)
@@ -382,7 +391,7 @@ the same symbol.  LOAD can also be a list of several symbols.
 
 While subprocesses do not inherit `load-path', it is the mother Emacs
 process that locates that file \(by inspecting `load-history', via
-`el-job--find-lib'), then gives the file to the subprocess.
+`el-job--ensure-compiled-lib'), then gives the file to the subprocess.
 
 Due to the absence of `load-path', be careful writing `require'
 statements into that Emacs Lisp file.  You can pass `load-path' via
@@ -523,13 +532,13 @@ For the rest of the arguments, see `el-job-launch'."
                            if (symbolp var)
                            collect (cons var (symbol-value var))
                            else collect var)))
-           (libs (prin1-to-string (mapcar #'el-job--find-lib load)))
+           (libs (prin1-to-string (mapcar #'el-job--ensure-compiled-lib load)))
            (command
             (list
              (file-name-concat invocation-directory invocation-name)
              "--quick"
              "--batch"
-             "--load" (el-job--find-lib 'el-job-child)
+             "--load" (el-job--ensure-compiled-lib 'el-job-child)
              "--eval" (format "(el-job-child--work #'%S %S)"
                               funcall .benchmark)))
            ;; Ensure the working directory is not remote (messes things up)

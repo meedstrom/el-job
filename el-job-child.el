@@ -31,7 +31,7 @@
   "Destructively zip two alists into one.
 Like the Dash expression \(-zip-with #\\='nconc list1 list2).
 
-METALIST1 and METALIST2 must be proper lists of the same length,
+METALIST1 and METALIST2 must be proper lists of identical length,
 and each element in them must be a proper list or nil."
   (let (merged)
     (while metalist1
