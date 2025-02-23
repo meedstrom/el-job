@@ -597,7 +597,7 @@ For the rest of the arguments, see `el-job-launch'."
         ;; https://github.com/meedstrom/org-node/issues/75
         (( file-error )
          (el-job--terminate job)
-         (error "Terminated el-job because of %S" err))))))
+         (error "el-job: Terminated job because of %S" err))))))
 
 (defun el-job--exec (job)
   "Split the queued inputs in JOB and pass to all children.
@@ -696,6 +696,7 @@ Can be called in a process buffer at any time."
   (if (eq (char-before) ?\n)
       (el-job--receive)))
 
+;; REVIEW: Rename to accept-output, in line with `accept-process-output'
 (defun el-job--receive (&optional proc)
   "Handle output in current buffer.
 
@@ -735,10 +736,12 @@ If nil, infer it from the buffer, if process is still alive."
         (unless (eq .method 'reap)
           (push proc .ready))
 
-        ;; Extra actions when this is the last output
+        ;; Extra actions when this was the last output
         (when (null .busy)
           (plist-put .timestamps :children-done
                      (car (last (sort .finish-times #'time-less-p))))
+          ;; TODO: Rename this timestamp, I feel it's not intuitive.
+          ;;       Maybe :wrapup-begin?
           (plist-put .timestamps :got-all-results (time-convert nil t))
           ;; Cleanup
           (cancel-timer .timeout)
@@ -749,8 +752,8 @@ If nil, infer it from the buffer, if process is still alive."
           ;; Did this really take 700 lines of code?
           (setf .results (el-job--zip-all .results))
           (when .wrapup (funcall .wrapup .results job))
-          ;; Now there's more in the queue, run again at next good opportunity.
           (when .queue
+            ;; There's more in the queue, run again at next good opportunity.
             (when (eq .method 'reap)
               (el-job--terminate job)
               (apply #'el-job--spawn-processes (el-job:spawn-args job)))
@@ -771,7 +774,7 @@ This kills all process buffers, but does not deregister the ID from
     (kill-buffer stderr)))
 
 (defun el-job--unhide-buffer (buffer)
-  "Rename BUFFER to omit initial space, and return new name."
+  "Rename BUFFER to omit initial space, and return the new name."
   (with-current-buffer buffer
     (rename-buffer (string-trim-left (buffer-name)))))
 
