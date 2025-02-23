@@ -275,7 +275,10 @@ See subroutine `el-job-child--zip' for details."
 ;; 1. Eval: (progn (setq el-job-default-method 'poll) (el-job-kill-all))
 ;; 2. Do a few times: M-x org-node-reset
 (defvar el-job-default-method
-  (if (< emacs-major-version 30) 'reap 'change-hook)
+  (if (and (>= emacs-major-version 30)
+           (bound-and-true-p fast-read-process-output))
+      'change-hook
+    'reap)
   "Method of getting output from subprocesses.
 Three settings possible:
 
