@@ -305,7 +305,44 @@ only the max interval between two polls.")
   "Max amount of processes to spawn for one job.
 Usually the number of logical cores on your machine minus 1.")
 
-(defvar el-jobs (make-hash-table :test #'eq))
+(defvar el-jobs (make-hash-table :test #'eq)
+  "Table of all el-job objects.")
+
+(defun el-job--launch-anonymous ( load
+                                  inject-vars
+                                  eval-once
+                                  funcall
+                                  inputs
+                                  wrapup )
+  "Launch an anonymous job.
+See `el-job-launch' for arguments."
+  (let* ((id (intern (format-time-string "%FT%H%M%S%N")))
+         (job (puthash id (el-job--make :id id
+                                        :anonymous t
+                                        :benchmark nil
+                                        :method 'reap
+                                        :cores el-job--cores
+                                        :wrapup wrapup
+                                        :queue inputs)
+                       el-jobs)))
+    (el-job--spawn-processes job load inject-vars eval-once funcall)
+    (el-job--exec job)))
+
+(defmacro el-job--with (job slots &rest body)
+  "Make SLOTS expand into object accessors for el-job JOB inside BODY.
+Cf. `with-slots' in the eieio library, or `let-alist'.
+
+For clarity inside BODY, each symbol name in SLOTS must be prepended
+with one character of your choosing, such as a dot."
+  (declare (indent 2) (debug ((&rest (symbolp sexp)))))
+  `(cl-symbol-macrolet
+       ,(cl-loop
+         for slot in slots
+         collect `(,slot (,(intern (concat "el-job:"
+                                           (substring (symbol-name slot) 1)))
+                          ,job)))
+     ,@body))
+
 (cl-defstruct (el-job (:constructor el-job--make)
                       (:copier nil)
                       (:conc-name el-job:))
@@ -328,41 +365,6 @@ Usually the number of logical cores on your machine minus 1.")
   input-sets
   queue
   results)
-
-(defmacro el-job--with (job slots &rest body)
-  "Make SLOTS expand into object accessors for el-job JOB inside BODY.
-Cf. `with-slots' in the eieio library, or `let-alist'.
-
-For clarity inside BODY, each symbol name in SLOTS must be prepended
-with one character of your choosing, such as a dot."
-  (declare (indent 2) (debug ((&rest (symbolp sexp)))))
-  `(cl-symbol-macrolet
-       ,(cl-loop
-         for slot in slots
-         collect `(,slot (,(intern (concat "el-job:"
-                                           (substring (symbol-name slot) 1)))
-                          ,job)))
-     ,@body))
-
-(defun el-job--launch-anonymous ( load
-                                  inject-vars
-                                  eval-once
-                                  funcall
-                                  inputs
-                                  wrapup )
-  "Launch an anonymous job.
-See `el-job-launch' for arguments."
-  (let* ((id (intern (format-time-string "%FT%H%M%S%N")))
-         (job (puthash id (el-job--make :id id
-                                        :anonymous t
-                                        :benchmark nil
-                                        :method 'reap
-                                        :cores el-job--cores
-                                        :wrapup wrapup
-                                        :queue inputs)
-                       el-jobs)))
-    (el-job--spawn-processes job load inject-vars eval-once funcall)
-    (el-job--exec job)))
 
 ;;;###autoload
 (cl-defun el-job-launch (&key load
