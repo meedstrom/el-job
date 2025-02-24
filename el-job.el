@@ -212,19 +212,7 @@ being saddled with a mega-item in addition to the average workload."
                     (setq this-sublist nil)
                     (push item items)))))))
         (if (length= sublists 0)
-            ;; Cover a special case that can prolly only occur when `n' = 1, in
-            ;; which case we should not arrive here, but...
-
-            ;; The first time `this-sublist' is populated, if it swallowed all
-            ;; members of `items', then we never arrive to the cleanup and so
-            ;; have to do it here.
             (progn
-              (push this-sublist sublists)
-              (setq this-sublist nil)
-              ;; Actually, let's make it an error for a few months.  If no
-              ;; users report in, I probably thought correctly, and can snip
-              ;; this entire clause.
-              ;; Also add some graceful degradation.
               (fset 'el-job--split-optimally 'el-job--split-evenly)
               (error "el-job: Unexpected code path, report appreciated! Data: %S"
                      (list 'n n
@@ -276,22 +264,20 @@ See subroutine `el-job-child--zip' for details."
 ;; 2. Do a few times: M-x org-node-reset
 ;; 3. Change the first eval form to a different method and repeat
 (defvar el-job-default-method
-  (if (bound-and-true-p fast-read-process-output) ;; in emacs 30
+  (if (bound-and-true-p fast-read-process-output) ;; emacs 30
       'change-hook
     'reap)
   "Method of getting output from subprocesses.
 Three settings possible:
 
 - `change-hook': Default on Emacs 30+.  Use `after-change-functions' in
-                  each process buffer.  Seems fastest on Emacs 31.0.50
-                  but much slower on Emacs 29.4, in the author's limited
-                  testing.
+                 each process buffer and watch for a newline.
 
 - `reap': Default on Emacs <=29.  Tell the processes to die after one
-           run, so process sentinels can collect the output.
+          run, so process sentinels can collect the output.
 
 - `poll': Keep the processes alive, and poll for finished output using
-           a simple timer.  Appears relatively performant on Emacs <=29.
+          a simple timer.  Appears relatively performant on Emacs <=29.
 
 If you change this setting, remember to run \\[el-job-kill-all].")
 
@@ -394,8 +380,8 @@ elements:
   (museum1 museum2 museum3))
 
 which is why it's important that FUNCALL always returns a list with a
-fixed number of sub-lists, enabling this merge.  Of course, these
-sub-lists are allowed to be empty, i.e. nil.
+fixed-in-advance number of sub-lists, enabling this merge.  Of course,
+these sub-lists are allowed to be empty, i.e. nil.
 
 Alternatively, FUNCALL may always return nil.
 
@@ -460,10 +446,14 @@ still at work.  IF-BUSY may take on one of three symbols:
                      after all children are ready
 - `noop': do nothing, drop inputs
 - `takeover': kill and restart with the new inputs"
-  (when skip-benchmark
-    (message "el-job-launch: Obsolete argument :skip-benchmark does nothing"))
-  (when eval-once
-    (message "el-job-launch: Obsolete argument :eval-once does nothing"))
+  ;; TODO: Uncomment these warnings sometime March 2025
+  ;; (when skip-benchmark
+  ;;   (message "el-job-launch: Obsolete argument :skip-benchmark does nothing"))
+  ;; (when eval-once
+  ;;   (message "el-job-launch: Obsolete argument :eval-once does nothing"))
+  (when wrapup
+    ;; (message "el-job-launch: Obsolete argument :wrapup interpreted as :callback")
+    (setq callback wrapup))
   (unless el-job--cores
     (setq el-job--cores (max 1 (1- (num-processors)))))
   (setq load (ensure-list load))
