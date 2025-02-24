@@ -37,13 +37,11 @@ and each element in them must be a proper list or nil."
 (defun el-job-child--receive-injection ()
   "Handle :inject-vars and :load."
   (let ((vars (read-minibuffer ""))
-        (libs (read-minibuffer ""))
-        (eval (read-minibuffer "")))
+        (libs (read-minibuffer "")))
     (dolist (var vars)
       (set (car var) (cdr var)))
     (dolist (lib libs)
-      (load lib))
-    (if eval (eval eval))))
+      (load lib))))
 
 (defvar el-job-child--ready nil)
 (defun el-job-child--work (func &optional _)
