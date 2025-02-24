@@ -5,13 +5,23 @@ Imagine you have a function you'd like to run on a long list of inputs.  You cou
 
 This library is a tool to split up the inputs and run the function in many subprocesses (one per CPU core), then merge their outputs and pass it back to the current Emacs.  In the meantime, current Emacs does not hang at all.
 
+Best of all, it completes /faster/ than =(mapcar #'FN INPUTS)=, owing to the use of all CPU cores!
+
 For real-world usage, search for =el-job-launch= in the source of [[https://github.com/meedstrom/org-node/blob/main/org-node.el][org-node.el]].
+
+** Design rationale
+
+I wanted was to shorten the round-trip as much as possible, *between the start of an async task and having the results*.  For example, say you have some lisp that collects completion candidates, and you want async because your lisp isn't always be fast enough to avoid bothering the user, but you'd still like it to return as soon as possible.
+
+A user might delay less than 100 ms between opening the minibuffer and beginning to type, so there's no room for overhead like spinning up subprocesses that load a bunch of libraries before getting to work.  Accordingly, this library keeps its subprocesses alive forever.
+
+An aesthetic drawback is cluttering your task manager with many entries that say =emacs=.  Check =M-x list-processes=.  They are safe to terminate if you want.
 
 ** Limitations
 
 1. Will *drop support for Emacs 28/29* sometime in mid-2025 (when Debian trixie is released).  For a backwards-compatible library, try [[https://github.com/jwiegley/emacs-async][async.el]].
 
-2. For now, some limitations on FUNCALL's return value, which must always be a list with a fixed length, where the elements are themselves lists.  For example, the return value at the end of [[https://github.com/meedstrom/org-node/blob/main/org-node-parser.el][org-node-parser.el]]:
+2. The return value from the =:funcall= function must always be a list with a fixed length, where the elements are themselves lists.  For example, the return value at the end of [[https://github.com/meedstrom/org-node/blob/main/org-node-parser.el][org-node-parser.el]]:
 
    #+begin_src elisp
    (list (if missing-file (list missing-file)) ; List of 1 item or nil
@@ -22,8 +32,8 @@ For real-world usage, search for =el-job-launch= in the source of [[https://gith
          (if problem (list problem))))         ; List of 1 item or nil
    #+end_src
 
-   May seem clunky when you return lists of only one item, but at least it is easy to extend.
+   May seem clunky when you return lists of only one item, but you may consider it a minor expense in exhcnage for simpler library code.
 
-3. Some data types cannot be exchanged with the children: at least those whose printed form look like =#<...>=.
+3. Some data types cannot be exchanged with the children: those whose printed form look like =#<...>=.  For example, =#<buffer notes.org>=, =#<obarray n=94311>=, =#<marker at 3102 in README.org>=.
 
-   No problem with hash tables and other records, they have no angle brackets and look like =#s(hash-table data ...)=, but you cannot send markers, obarrays, buffers, windows etc, they look like =#<obarray n=94311>=.  (Would you ever want to?)
+   To my knowledge, this sort of data usually has meaning only within the current process, so you would never want to do that anyway.  In days past, *hash tables* also took that form, but not since Emacs 25 or so: their printed form are =#s(hash-table data ...)=, which works fine to send.
