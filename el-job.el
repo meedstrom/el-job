@@ -310,7 +310,6 @@ Usually the number of logical cores on your machine minus 1.")
 
 (defun el-job--launch-anonymous ( load
                                   inject-vars
-                                  eval-once
                                   funcall
                                   inputs
                                   wrapup )
@@ -324,7 +323,7 @@ See `el-job-launch' for arguments."
                                         :wrapup wrapup
                                         :queue inputs)
                        el-jobs)))
-    (el-job--spawn-processes job load inject-vars eval-once funcall)
+    (el-job--spawn-processes job load inject-vars funcall)
     (el-job--exec job)))
 
 (defmacro el-job--with (job slots &rest body)
@@ -367,16 +366,14 @@ with one character of your choosing, such as a dot."
 ;;;###autoload
 (cl-defun el-job-launch (&key load
                               inject-vars
-                              eval-once
+                              eval-once ;; REMOVED 2025-02-24
                               funcall
                               inputs
                               wrapup
                               id
                               if-busy
-                              method
-                              ;; transitional due to removed arguments:
-                              ;; 2025-02-24 skip-benchmark
-                              &allow-other-keys)
+                              skip-benchmark ;; REMOVED 2025-02-24
+                              method)
   "Run FUNCALL in one or more headless Elisp processes.
 Then merge the return values \(lists of N lists) into one list
 \(of N lists) and pass it to WRAPUP.
@@ -461,12 +458,11 @@ still at work.  IF-BUSY may take on one of three symbols:
 - `wait' \(default): append the inputs to a queue, to be handled
                      after all children are ready
 - `noop': do nothing, drop inputs
-- `takeover': kill and restart with the new inputs
-
-
-EVAL-ONCE is a string containing a Lisp form.  It is evaluated in the
-child just before FUNCALL, but only once, even though FUNCALL may be
-evaluated many times."
+- `takeover': kill and restart with the new inputs"
+  (when skip-benchmark
+    (message "el-job-launch: Obsolete argument :skip-benchmark does nothing"))
+  (when eval-once
+    (message "el-job-launch: Obsolete argument :eval-once does nothing"))
   (unless el-job--cores
     (setq el-job--cores (max 1 (1- (num-processors)))))
   (setq load (ensure-list load))
@@ -477,16 +473,15 @@ evaluated many times."
     (unless (and (symbolp wrapup) (functionp wrapup))
       (error "Argument WRAPUP must be a symbol with a function definition")))
   (if (null id)
-      (el-job--launch-anonymous load inject-vars eval-once funcall inputs wrapup)
+      (el-job--launch-anonymous load inject-vars funcall inputs wrapup)
     (let ((arg-signature (+ (sxhash load)
                             (sxhash inject-vars)
-                            (sxhash eval-once)
                             (sxhash wrapup) ;; TODO: permit changing it
                             (sxhash method)
                             (sxhash funcall)))
           (job (or (gethash id el-jobs)
-                   (puthash id (el-job--make :id id
-                                             :method (or method el-job-default-method))
+                   (puthash id (el-job--make
+                                :id id :method (or method el-job-default-method))
                             el-jobs)))
           (respawn nil)
           (exec nil))
@@ -521,7 +516,7 @@ evaluated many times."
             (setq arg-signature (+ arg-signature .cores))
             (when (/= .sig arg-signature)
               (setf .sig arg-signature)
-              (setf .spawn-args (list job load inject-vars eval-once funcall))
+              (setf .spawn-args (list job load inject-vars funcall))
               (el-job--dbg 2 "New arguments, resetting job %s" id)
               (setq respawn t))
             (setf .wrapup wrapup)
@@ -529,12 +524,12 @@ evaluated many times."
               (el-job--terminate job)
               (when method
                 (setf .method method))
-              (el-job--spawn-processes job load inject-vars eval-once funcall))
+              (el-job--spawn-processes job load inject-vars funcall))
             (el-job--exec job)
             t))))))
 
 (defvar-local el-job-here nil)
-(defun el-job--spawn-processes (job load inject-vars eval-once funcall)
+(defun el-job--spawn-processes (job load inject-vars funcall)
   "Spin up processes for JOB, standing by for input.
 For the rest of the arguments, see `el-job-launch'."
   (el-job--with job (.stderr .id .cores .ready .method)
@@ -588,8 +583,6 @@ For the rest of the arguments, see `el-job-launch'."
             (process-send-string proc vars)
             (process-send-string proc "\n")
             (process-send-string proc libs)
-            (process-send-string proc "\n")
-            (process-send-string proc (or eval-once "nil"))
             (process-send-string proc "\n")
             (push proc .ready))
         ;; https://github.com/meedstrom/org-node/issues/75

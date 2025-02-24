@@ -35,7 +35,7 @@ and each element in them must be a proper list or nil."
     (nreverse merged)))
 
 (defun el-job-child--receive-injection ()
-  "Handle :inject-vars, :load and :eval-once."
+  "Handle :inject-vars and :load."
   (let ((vars (read-minibuffer ""))
         (libs (read-minibuffer ""))
         (eval (read-minibuffer "")))
