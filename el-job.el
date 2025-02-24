@@ -312,7 +312,7 @@ Usually the number of logical cores on your machine minus 1.")
                                   inject-vars
                                   funcall
                                   inputs
-                                  wrapup )
+                                  callback )
   "Launch an anonymous job.
 See `el-job-launch' for arguments."
   (let* ((id (intern (format-time-string "%FT%H%M%S%N")))
@@ -320,7 +320,7 @@ See `el-job-launch' for arguments."
                                         :anonymous t
                                         :method 'reap
                                         :cores el-job--cores
-                                        :wrapup wrapup
+                                        :callback callback
                                         :queue inputs)
                        el-jobs)))
     (el-job--spawn-processes job load inject-vars funcall)
@@ -349,7 +349,7 @@ with one character of your choosing, such as a dot."
   (method el-job-default-method :documentation "See `el-job-default-method'.")
   (sig 0)
   (cores 1)
-  wrapup
+  callback
   (ready nil :documentation "Processes ready for input.  Becomes nil permanently if METHOD is `reap'.")
   (busy nil :documentation "Processes that have not yet returned output.")
   stderr
@@ -369,14 +369,15 @@ with one character of your choosing, such as a dot."
                               eval-once ;; REMOVED 2025-02-24
                               funcall
                               inputs
-                              wrapup
+                              callback
                               id
                               if-busy
+                              wrapup ;; RENAMED 2025-02-24 to callback
                               skip-benchmark ;; REMOVED 2025-02-24
                               method)
   "Run FUNCALL in one or more headless Elisp processes.
 Then merge the return values \(lists of N lists) into one list
-\(of N lists) and pass it to WRAPUP.
+\(of N lists) and pass it to CALLBACK.
 
 i.e. each subprocess may return lists like
 
@@ -421,12 +422,12 @@ If INPUTS is omitted, only one subprocess will spawn.
 
 The subprocesses have no access to current Emacs state.  The only way
 they can affect current state, is if FUNCALL returns data, which is then
-handled by WRAPUP function in the current Emacs.
+handled by CALLBACK function in the current Emacs.
 
 Emacs stays responsive to user input up until all subprocesses finish,
-which is when their results are merged and WRAPUP is executed.
+which is when their results are merged and CALLBACK is executed.
 
-WRAPUP receives two arguments: the results as mentioned before, and the
+CALLBACK receives two arguments: the results as mentioned before, and the
 job object.  The latter is mainly useful to check timestamps,
 which you can get from this form:
 
@@ -469,14 +470,14 @@ still at work.  IF-BUSY may take on one of three symbols:
   (setq if-busy (or if-busy 'wait))
   (unless (and (symbolp funcall) (functionp funcall))
     (error "Argument FUNCALL must be a symbol with a function definition"))
-  (when wrapup
-    (unless (and (symbolp wrapup) (functionp wrapup))
-      (error "Argument WRAPUP must be a symbol with a function definition")))
+  (when callback
+    (unless (and (symbolp callback) (functionp callback))
+      (error "Argument CALLBACK must be a symbol with a function definition")))
   (if (null id)
-      (el-job--launch-anonymous load inject-vars funcall inputs wrapup)
+      (el-job--launch-anonymous load inject-vars funcall inputs callback)
     (let ((arg-signature (+ (sxhash load)
                             (sxhash inject-vars)
-                            (sxhash wrapup) ;; TODO: permit changing it
+                            (sxhash callback) ;; TODO: permit changing it
                             (sxhash method)
                             (sxhash funcall)))
           (job (or (gethash id el-jobs)
@@ -519,7 +520,7 @@ still at work.  IF-BUSY may take on one of three symbols:
               (setf .spawn-args (list job load inject-vars funcall))
               (el-job--dbg 2 "New arguments, resetting job %s" id)
               (setq respawn t))
-            (setf .wrapup wrapup)
+            (setf .callback callback)
             (when respawn
               (el-job--terminate job)
               (when method
@@ -691,7 +692,7 @@ Can be called in a process buffer at any time."
   "Handle output in current buffer.
 
 If this is the last output for the job, merge all outputs, maybe execute
-the wrapup function, finally maybe run the job again if there is now
+the callback function, finally maybe run the job again if there is now
 more input in the queue.
 
 Argument PROC, if provided, should be the corresponding process.
@@ -730,7 +731,7 @@ If nil, infer it from the buffer, if process is still alive."
           (plist-put .timestamps :children-done
                      (car (last (sort .finish-times #'time-less-p))))
           ;; TODO: Rename this timestamp, I feel it's not intuitive.
-          ;;       Maybe :wrapup-begin?
+          ;;       Maybe :callback-begin?
           (plist-put .timestamps :got-all-results (current-time))
           ;; Cleanup
           (cancel-timer .timeout)
@@ -740,7 +741,7 @@ If nil, infer it from the buffer, if process is still alive."
           ;; Finally the purpose of it all.
           ;; Did this really take 700 lines of code?
           (setf .results (el-job--zip-all .results))
-          (when .wrapup (funcall .wrapup .results job))
+          (when .callback (funcall .callback .results job))
           (when .queue
             ;; There's more in the queue, run again at next good opportunity.
             (when (eq .method 'reap)
