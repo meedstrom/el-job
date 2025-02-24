@@ -232,7 +232,7 @@ being saddled with a mega-item in addition to the average workload."
                           sublists)))))
         sublists)))))
 
-(defun el-job--split-evenly (big-list n)
+(defun el-job--split-evenly (big-list n &optional _)
   "Split BIG-LIST into a list of up to N sublists.
 
 In the unlikely case where BIG-LIST contains N or fewer elements,
