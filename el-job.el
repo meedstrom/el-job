@@ -156,8 +156,8 @@ and use \\[eval-buffer] to ensure this will find the correct file."
       ;; the point the developer actually evals the .el buffer.
       loaded)))
 
-(defun el-job--split-optimally (items n table)
-  "Split ITEMS into up to N lists of items.
+(defun el-job--split-optimally (items n-cores table)
+  "Split ITEMS into up to N-CORES lists of items.
 
 For all keys in TABLE that match one of ITEMS, assume the value holds a
 benchmark \(a Lisp time value) for how long it took in the past to pass
@@ -168,29 +168,29 @@ take around the same total wall-time to work through this time.
 
 This reduces the risk that one child takes noticably longer due to
 being saddled with a mega-item in addition to the average workload."
-  (let ((total-duration (time-convert 0 t)))
+  (let ((total-duration 0))
     (cond
-     ((= n 1)
+     ((= n-cores 1)
       (list items))
-     ((length< items (1+ n))
-      (el-job--split-evenly items n))
+     ((length< items (1+ n-cores))
+      (el-job--split-evenly items n-cores))
      ((progn
         (dolist (item items)
           (when-let ((dur (gethash item table)))
             (setq total-duration (time-add total-duration dur))))
-        (time-equal-p total-duration (time-convert 0 t)))
+        (eq total-duration 0))
       ;; Probably a first-time run
-      (el-job--split-evenly items n))
+      (el-job--split-evenly items n-cores))
      (t
-      (let ((max-per-core (/ (float-time total-duration) n))
+      (let ((max-per-core (/ (float-time total-duration) n-cores))
             (this-sublist-sum 0)
-            sublists
             this-sublist
+            sublists
             untimed
             dur)
         (catch 'filled
           (while-let ((item (pop items)))
-            (if (length= sublists n)
+            (if (length= sublists n-cores)
                 (progn (push item items)
                        (throw 'filled t))
               (setq dur (gethash item table))
@@ -215,7 +215,7 @@ being saddled with a mega-item in addition to the average workload."
             (progn
               (fset 'el-job--split-optimally 'el-job--split-evenly)
               (error "el-job: Unexpected code path, report appreciated! Data: %S"
-                     (list 'n n
+                     (list 'n-cores n-cores
                            'total-duration total-duration
                            'max-per-core max-per-core
                            'this-sublist-sum this-sublist-sum
@@ -352,15 +352,16 @@ with one character of your choosing, such as a dot."
 ;;;###autoload
 (cl-defun el-job-launch (&key load
                               inject-vars
-                              eval-once ;; REMOVED 2025-02-24
                               funcall
                               inputs
                               callback
                               id
                               if-busy
-                              wrapup ;; RENAMED 2025-02-24 to callback
-                              skip-benchmark ;; REMOVED 2025-02-24
-                              method)
+                              method
+                              ;; Arguments removed 2025-02-24
+                              wrapup
+                              skip-benchmark
+                              eval-once)
   "Run FUNCALL in one or more headless Elisp processes.
 Then merge the return values \(lists of N lists) into one list
 \(of N lists) and pass it to CALLBACK.
@@ -689,7 +690,7 @@ If nil, infer it from the buffer, if process is still alive."
   (let* ((inhibit-quit t)
          (proc (or proc (get-buffer-process (current-buffer))))
          (job el-job-here)
-         (output (condition-case-unless-debug err (read (buffer-string))
+         (output (condition-case err (read (buffer-string))
                    (( error )
                     (el-job--unhide-buffer (el-job:stderr job))
                     (dolist (proc (el-job--all-processes job))
