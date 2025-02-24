@@ -245,7 +245,7 @@ being saddled with a mega-item in addition to the average workload."
         sublists)))))
 
 (defun el-job--split-evenly (big-list n)
-  "Split BIG-LIST equally into a list of up to N sublists.
+  "Split BIG-LIST into a list of up to N sublists.
 
 In the unlikely case where BIG-LIST contains N or fewer elements,
 the result looks just like BIG-LIST except that
@@ -274,9 +274,9 @@ See subroutine `el-job-child--zip' for details."
 ;; If you use org-node, you can compare these methods' perfs on your machine.
 ;; 1. Eval: (progn (setq el-job-default-method 'poll) (el-job-kill-all))
 ;; 2. Do a few times: M-x org-node-reset
+;; 3. Change the first eval form to a different method and repeat
 (defvar el-job-default-method
-  (if (and (>= emacs-major-version 30)
-           (bound-and-true-p fast-read-process-output))
+  (if (bound-and-true-p fast-read-process-output) ;; in emacs 30
       'change-hook
     'reap)
   "Method of getting output from subprocesses.
@@ -319,7 +319,6 @@ See `el-job-launch' for arguments."
   (let* ((id (intern (format-time-string "%FT%H%M%S%N")))
          (job (puthash id (el-job--make :id id
                                         :anonymous t
-                                        :benchmark nil
                                         :method 'reap
                                         :cores el-job--cores
                                         :wrapup wrapup
@@ -349,7 +348,6 @@ with one character of your choosing, such as a dot."
   id
   anonymous
   (method el-job-default-method :documentation "See `el-job-default-method'.")
-  (benchmark t)
   (sig 0)
   (cores 1)
   wrapup
@@ -375,8 +373,10 @@ with one character of your choosing, such as a dot."
                               wrapup
                               id
                               if-busy
-                              skip-benchmark
-                              method)
+                              method
+                              ;; transitional due to removed arguments:
+                              ;; 2025-02-24 skip-benchmark
+                              &allow-other-keys)
   "Run FUNCALL in one or more headless Elisp processes.
 Then merge the return values \(lists of N lists) into one list
 \(of N lists) and pass it to WRAPUP.
@@ -446,7 +446,6 @@ ID identifies this job, and is a symbol, a keyword or an integer below
 
 - Allow repeated calls on the same inputs to optimize how those inputs
   are split, thanks to benchmarks from previous calls.
-  If needed, you can inhibit this by setting SKIP-BENCHMARK non-nil.
 
 - The associated process buffers stick around and can be inspected for
   debugging purposes.  Seek buffer names that start with \" *el-job-\"
@@ -487,13 +486,12 @@ evaluated many times."
                             (sxhash funcall)))
           (job (or (gethash id el-jobs)
                    (puthash id (el-job--make :id id
-                                             :benchmark (not skip-benchmark)
                                              :method (or method el-job-default-method))
                             el-jobs)))
           (respawn nil)
           (exec nil))
       (el-job--with job
-          (.queue .busy .ready .sig .cores .method .benchmark .spawn-args)
+          (.queue .busy .ready .sig .cores .method .spawn-args)
         (unless (and .busy (eq if-busy 'noop))
           (when (functionp inputs)
             (setq inputs (funcall inputs)))
@@ -531,7 +529,6 @@ evaluated many times."
               (el-job--terminate job)
               (when method
                 (setf .method method))
-              (setf .benchmark (not skip-benchmark))
               (el-job--spawn-processes job load inject-vars eval-once funcall))
             (el-job--exec job)
             t))))))
@@ -540,7 +537,7 @@ evaluated many times."
 (defun el-job--spawn-processes (job load inject-vars eval-once funcall)
   "Spin up processes for JOB, standing by for input.
 For the rest of the arguments, see `el-job-launch'."
-  (el-job--with job (.benchmark .stderr .id .cores .ready .method)
+  (el-job--with job (.stderr .id .cores .ready .method)
     (let* ((print-length nil)
            (print-level nil)
            (print-circle t)
@@ -559,8 +556,7 @@ For the rest of the arguments, see `el-job-launch'."
              "--quick"
              "--batch"
              "--load" (el-job--ensure-compiled-lib 'el-job-child)
-             "--eval" (format "(el-job-child--work #'%S %S)"
-                              funcall .benchmark)))
+             "--eval" (format "(el-job-child--work #'%S)" funcall)))
            ;; Ensure the working directory is not remote (messes things up)
            (default-directory invocation-directory)
            proc)
@@ -609,7 +605,7 @@ This puts them to work.  Each successful child will print output
 should trigger `el-job--receive'."
   (el-job--with job
       ( .ready .busy .input-sets .results .queue .cores .past-elapsed
-        .benchmark .timestamps .poll-timer .finish-times .anonymous .method
+        .timestamps .poll-timer .finish-times .anonymous .method
         .id .timeout )
     (cancel-timer .timeout)
     (setf .results nil)
@@ -629,8 +625,7 @@ should trigger `el-job--receive'."
           (cl-assert .ready)
           (setq proc (pop .ready))
           (push proc .busy)
-          (when .benchmark
-            (setf (alist-get proc .input-sets) items))
+          (setf (alist-get proc .input-sets) items)
           (with-current-buffer (process-buffer proc)
             (erase-buffer)
             (process-send-string proc (prin1-to-string items))
@@ -721,17 +716,16 @@ If nil, infer it from the buffer, if process is still alive."
                            (current-buffer) err)))))
     (when output
       (el-job--with job
-          ( .busy .ready .input-sets .past-elapsed .results .benchmark .queue
+          ( .busy .ready .input-sets .past-elapsed .results .queue
             .timestamps .id .temp-hook .anonymous .method .finish-times
             .timeout )
         (push (caar output) .finish-times)
-        (when .benchmark
-          ;; Record time spent by FUNCALL on each item in INPUTS,
-          ;; for a better `el-job--split-optimally' in the future.
-          (let ((durations (cdar output))
-                (input (alist-get proc .input-sets)))
-            (while durations
-              (puthash (pop input) (pop durations) .past-elapsed))))
+        ;; Record time spent by FUNCALL on each item in INPUTS,
+        ;; for a better `el-job--split-optimally' in the future.
+        (let ((durations (cdar output))
+              (input (alist-get proc .input-sets)))
+          (while durations
+            (puthash (pop input) (pop durations) .past-elapsed)))
         ;; The `car' was just this library's metadata
         (push (cdr output) .results)
         (setf .busy (delq proc .busy))

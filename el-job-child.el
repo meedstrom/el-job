@@ -52,7 +52,7 @@ and each element in them must be a proper list or nil."
     (if eval (eval eval))))
 
 (defvar el-job-child--ready nil)
-(defun el-job-child--work (func benchmark)
+(defun el-job-child--work (func &optional _)
   "Handle input from mother process `el-job--exec' and print a result.
 
 Since `print' prints to standard output, it would be expected to
@@ -62,7 +62,7 @@ filter.
 Assume the input is a list of arguments to pass to FUNC one at a time.
 FUNC comes from the :funcall argument of `el-job-launch'.
 
-If BENCHMARK t, benchmark how long FUNC took to handle each item, and
+Benchmark how long FUNC took to handle each item, and
 add that information to the final return value."
   (unless el-job-child--ready
     (setq el-job-child--ready t)
@@ -77,8 +77,7 @@ add that information to the final return value."
               (setq item (pop input))
               (setq start (time-convert nil t))
               (setq output (funcall func item))
-              (when benchmark
-                (push (time-since start) meta))
+              (push (time-since start) meta)
               ;; May affect the durations erratically, so do this step after.
               (setq results (el-job-child--zip output results)))
           (funcall func))
