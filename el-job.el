@@ -354,7 +354,7 @@ with one character of your choosing, such as a dot."
   (ready nil :documentation "Processes ready for input.  Becomes nil permanently if METHOD is `reap'.")
   (busy nil :documentation "Processes that have not yet returned output.")
   stderr
-  (timestamps (list :accept-launch-request (time-convert nil t)))
+  (timestamps (list :accept-launch-request (current-time)))
   (poll-timer (timer-create))
   (timeout (timer-create))
   finish-times
@@ -633,7 +633,7 @@ should trigger `el-job--receive'."
             (when (eq .method 'reap)
               (process-send-string proc "die\n"))))))
     (setf .queue nil)
-    (plist-put .timestamps :launched (time-convert nil t))
+    (plist-put .timestamps :launched (current-time))
     (setf .timeout (run-with-timer 30 nil #'el-job--timeout .id))
     (when (eq .method 'poll)
       (cancel-timer .poll-timer)
@@ -671,7 +671,7 @@ or check what is causing FUNCALL to never return.
 Processes killed: %S" (truncate (* 2 el-job--global-timeout)) procs)
           (mapc #'el-job--kill-quietly procs))
       (setq delay (* delay 1.5))
-      (timer-set-time timer (time-add delay (time-convert nil t)))
+      (timer-set-time timer (time-add delay (current-time)))
       (timer-set-function timer #'el-job--poll (list procs timer delay))
       (timer-activate timer))))
 
@@ -738,7 +738,7 @@ If nil, infer it from the buffer, if process is still alive."
                      (car (last (sort .finish-times #'time-less-p))))
           ;; TODO: Rename this timestamp, I feel it's not intuitive.
           ;;       Maybe :wrapup-begin?
-          (plist-put .timestamps :got-all-results (time-convert nil t))
+          (plist-put .timestamps :got-all-results (current-time))
           ;; Cleanup
           (cancel-timer .timeout)
           (when .anonymous
