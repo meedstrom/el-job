@@ -569,7 +569,7 @@ For the rest of the arguments, see `el-job-launch'."
               (setq-local el-job-here job)
               (pcase .method
                 ('change-hook (add-hook 'after-change-functions
-                                        #'el-job--receive-in-buffer-if-done nil t))
+                                        #'el-job--handle-output-in-buffer-if-done nil t))
                 ('reap (set-process-sentinel proc #'el-job--sentinel))))
             (process-send-string proc vars)
             (process-send-string proc "\n")
@@ -586,7 +586,7 @@ For the rest of the arguments, see `el-job-launch'."
 
 This puts them to work.  Each successful child will print output
 \(even nil output) to its associated process buffer, whereupon something
-should trigger `el-job--receive'."
+should trigger `el-job--handle-output'."
   (el-job--with job
       ( .ready .busy .input-sets .results .queue .cores .past-elapsed
         .timestamps .poll-timer .finish-times .anonymous .method
@@ -636,14 +636,14 @@ should trigger `el-job--receive'."
           "Timeout timer should have been cancelled for el-job ID %s" id))))
 
 (defun el-job--poll (procs timer delay)
-  "Try to run `el-job--receive' in each buffer associated with PROCS.
+  "Try to run `el-job--handle-output' in each buffer associated with PROCS.
 
 If any processes were not done yet, reassign the timer object TIMER to
 call this function again after DELAY seconds, upped by 50%.  Pass the
 increased delay along, so that it keeps increasing each time."
   (setq procs (cl-loop for busy in procs
                        unless (with-current-buffer (process-buffer busy)
-                                (el-job--receive-in-buffer-if-done))
+                                (el-job--handle-output-in-buffer-if-done))
                        collect busy))
   (when procs
     (if (> delay el-job--global-timeout)
@@ -666,19 +666,18 @@ For arguments PROC and EVENT, see Info node `(elisp) Sentinels'."
     (if (and (equal event "finished\n")
              (eq (process-status proc) 'exit)
              (eq (process-exit-status proc) 0))
-        (el-job--receive proc)
+        (el-job--handle-output proc)
       (el-job--unhide-buffer (current-buffer))
       (el-job--unhide-buffer (el-job:stderr el-job-here))
       (message "Child had problems, check buffer %s" (buffer-name)))))
 
-(defun el-job--receive-in-buffer-if-done (&rest _)
+(defun el-job--handle-output-in-buffer-if-done (&rest _)
   "Handle output in current buffer if it appears complete.
 Can be called in a process buffer at any time."
   (if (eq (char-before) ?\n)
-      (el-job--receive)))
+      (el-job--handle-output)))
 
-;; REVIEW: Rename to accept-output, in line with `accept-process-output'
-(defun el-job--receive (&optional proc)
+(defun el-job--handle-output (&optional proc)
   "Handle output in current buffer.
 
 If this is the last output for the job, merge all outputs, maybe execute
