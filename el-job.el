@@ -347,7 +347,8 @@ with one character of your choosing, such as a dot."
   spawn-args
   input-sets
   queue
-  results)
+  result-sets
+  merged-results)
 
 ;;;###autoload
 (cl-defun el-job-launch (&key load
@@ -478,7 +479,7 @@ still at work.  IF-BUSY may take on one of three symbols:
           (respawn nil)
           (exec nil))
       (el-job--with job
-          (.queue .busy .ready .sig .cores .method .spawn-args)
+          (.queue .busy .ready .sig .cores .method .spawn-args .callback)
         (unless (and .busy (eq if-busy 'noop))
           (when (functionp inputs)
             (setq inputs (funcall inputs)))
@@ -589,11 +590,11 @@ This puts them to work.  Each successful child will print output
 \(even nil output) to its associated process buffer, whereupon something
 should trigger `el-job--handle-output'."
   (el-job--with job
-      ( .ready .busy .input-sets .results .queue .cores .past-elapsed
+      ( .ready .busy .input-sets .result-sets .queue .cores .past-elapsed
         .timestamps .poll-timer .finish-times .anonymous .method
         .id .timeout )
     (cancel-timer .timeout)
-    (setf .results nil)
+    (setf .result-sets nil)
     (setf .finish-times nil)
     (let ((splits (el-job--split-optimally .queue .cores .past-elapsed)))
       (unless (length< splits (1+ (length .ready)))
@@ -690,28 +691,33 @@ If nil, infer it from the buffer, if process is still alive."
   (let* ((inhibit-quit t)
          (proc (or proc (get-buffer-process (current-buffer))))
          (job el-job-here)
-         (output (condition-case err (read (buffer-string))
-                   (( error )
-                    (el-job--unhide-buffer (el-job:stderr job))
-                    (dolist (proc (el-job--all-processes job))
-                      (el-job--unhide-buffer (process-buffer proc))
-                      (el-job--kill-quietly-keep-buffer proc))
-                    (error "In buffer %S: problems reading child output: %S"
-                           (current-buffer) err)))))
-    (when output
+         finish-time
+         durations
+         results)
+    (condition-case err (let ((output (read (buffer-string))))
+                          (setq finish-time (caar output))
+                          (setq durations (cdar output))
+                          (setq results (cdr output)))
+      (( error )
+       (el-job--unhide-buffer (el-job:stderr job))
+       (dolist (proc (el-job--all-processes job))
+         (el-job--unhide-buffer (process-buffer proc))
+         (el-job--kill-quietly-keep-buffer proc))
+       (error "In buffer %S: problems reading child output: %S"
+              (current-buffer) err)))
+    (when results
       (el-job--with job
-          ( .busy .ready .input-sets .past-elapsed .results .queue
+          ( .busy .ready .input-sets .past-elapsed .result-sets .queue
             .timestamps .id .temp-hook .anonymous .method .finish-times
-            .timeout )
-        (push (caar output) .finish-times)
+            .timeout .callback .merged-results )
+        (push finish-time .finish-times)
         ;; Record time spent by FUNCALL on each item in INPUTS,
         ;; for a better `el-job--split-optimally' in the future.
-        (let ((durations (cdar output))
-              (input (alist-get proc .input-sets)))
+        (let ((input (alist-get proc .input-sets)))
           (while durations
             (puthash (pop input) (pop durations) .past-elapsed)))
         ;; The `car' was just this library's metadata
-        (push (cdr output) .results)
+        (push results .result-sets)
         (setf .busy (delq proc .busy))
         (unless (eq .method 'reap)
           (push proc .ready))
@@ -730,8 +736,9 @@ If nil, infer it from the buffer, if process is still alive."
             (remhash .id el-jobs))
           ;; Finally the purpose of it all.
           ;; Did this really take 700 lines of code?
-          (setf .results (el-job--zip-all .results))
-          (when .callback (funcall .callback .results job))
+          (setf .merged-results (el-job--zip-all .result-sets))
+          (when .callback
+            (funcall .callback .merged-results job))
           (when .queue
             ;; There's more in the queue, run again at next good opportunity.
             (when (eq .method 'reap)
