@@ -579,7 +579,7 @@ For the rest of the arguments, see `el-job-launch'."
         ;; https://github.com/meedstrom/org-node/issues/75
         (( file-error )
          (el-job--terminate job)
-         (error "el-job: Terminated job because of %S" err))))))
+         (el-job--dbg 1 "el-job: Terminated job because of %S" err))))))
 
 (defun el-job--exec (job)
   "Split the queued inputs in JOB and pass to all children.
