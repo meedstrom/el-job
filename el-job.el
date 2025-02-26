@@ -360,8 +360,8 @@ with one character of your choosing, such as a dot."
                               method
                               ;; Arguments removed 2025-02-24
                               wrapup
-                              skip-benchmark
-                              eval-once)
+                              _skip-benchmark
+                              _eval-once)
   "Run FUNCALL in one or more headless Elisp processes.
 Then merge the return values \(lists of N lists) into one list
 \(of N lists) and pass it to CALLBACK.
