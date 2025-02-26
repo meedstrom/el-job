@@ -473,13 +473,12 @@ still at work.  IF-BUSY may take on one of three symbols:
                             (sxhash method)
                             (sxhash funcall)))
           (job (or (gethash id el-jobs)
-                   (puthash id (el-job--make
-                                :id id :method (or method el-job-default-method))
-                            el-jobs)))
+                   (puthash id (el-job--make :id id) el-jobs)))
           (respawn nil)
           (exec nil))
       (el-job--with job
           (.queue .busy .ready .sig .cores .method .spawn-args .callback)
+        (setf .method (or method el-job-default-method))
         (unless (and .busy (eq if-busy 'noop))
           (when (functionp inputs)
             (setq inputs (funcall inputs)))
@@ -500,7 +499,6 @@ still at work.  IF-BUSY may take on one of three symbols:
               (setq respawn t))
             (when (or (eq .method 'change-hook)
                       (eq .method 'poll))
-              ;; TODO: Skip this check, just react on `process-send-string' fail
               (unless (and (= .cores (+ (length .busy) (length .ready)))
                            (seq-every-p #'process-live-p .ready)
                            (seq-every-p #'process-live-p .busy))
