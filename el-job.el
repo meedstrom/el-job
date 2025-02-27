@@ -493,7 +493,7 @@ evaluated many times."
           (respawn nil)
           (exec nil))
       (el-job--with job
-          (.queue .busy .ready .sig .cores .method .benchmark .spawn-args)
+          (.queue .busy .ready .sig .cores .method .benchmark .spawn-args .wrapup)
         (unless (and .busy (eq if-busy 'noop))
           (when (functionp inputs)
             (setq inputs (funcall inputs)))
@@ -723,7 +723,7 @@ If nil, infer it from the buffer, if process is still alive."
       (el-job--with job
           ( .busy .ready .input-sets .past-elapsed .results .benchmark .queue
             .timestamps .id .temp-hook .anonymous .method .finish-times
-            .timeout )
+            .timeout .wrapup )
         (push (caar output) .finish-times)
         (when .benchmark
           ;; Record time spent by FUNCALL on each item in INPUTS,
