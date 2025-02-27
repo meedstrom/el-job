@@ -42,6 +42,8 @@
 (require 'compat)
 (require 'el-job-child)
 
+(defvar el-job-major-version 1)
+
 ;;; Subroutines:
 
 (defvar el-job--debug-level 0
@@ -772,8 +774,6 @@ Meanwhile, ensure string MESSAGE is visible in the minibuffer."
 Safely return nil otherwise, whether or not ID is known."
   (when-let ((job (gethash id el-jobs)))
     (el-job:busy job)))
-
-(define-obsolete-function-alias 'el-job--await 'el-job-await "2024-12-29")
 
 (provide 'el-job)
 
