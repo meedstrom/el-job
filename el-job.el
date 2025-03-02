@@ -118,7 +118,8 @@ find the correct file."
     (when (string-search "freefn-" loaded)
       (unless el-job--onetime-canary
         (setq el-job--onetime-canary t)
-        (error "Could not find real file for feature %S, found %s" loaded))
+        (error "Could not find real file for feature %S, found %s"
+               feature loaded))
       (setq loaded
             (locate-file (symbol-name feature) load-path '(".el" ".el.gz"))))
     (if (or (string-suffix-p ".el" loaded)
@@ -535,17 +536,17 @@ For the rest of the arguments, see `el-job-launch'."
                          :buffer (get-buffer-create
                                   (format " *el-job-%s:%d*" ident i) t)
                          :command command
-                         :sentinel #'ignore))))
-            (when (string-suffix-p ">" (process-name proc))
-              (el-job--dbg 1 "Unintended duplicate process id for %s" proc))
-            (process-send-string proc vars)
-            (process-send-string proc "\n")
-            (process-send-string proc libs)
-            (process-send-string proc "\n")
-            (with-current-buffer (process-buffer proc)
-              (setq-local el-job-here job)
-              (add-hook 'after-change-functions #'el-job--check-done nil t))
-            (push proc .ready))
+                         :sentinel #'ignore)))
+              (when (string-suffix-p ">" (process-name proc))
+                (el-job--dbg 1 "Unintended duplicate process id for %s" proc))
+              (process-send-string proc vars)
+              (process-send-string proc "\n")
+              (process-send-string proc libs)
+              (process-send-string proc "\n")
+              (with-current-buffer (process-buffer proc)
+                (setq-local el-job-here job)
+                (add-hook 'after-change-functions #'el-job--check-done nil t))
+              (push proc .ready)))
         ;; https://github.com/meedstrom/org-node/issues/75
         (( file-error )
          (el-job--disable job)
