@@ -20,14 +20,12 @@ I want to shorten the round-trip as much as possible, *between the start of an a
 
 For example, say you have some lisp that collects completion candidates, and you want to run it asynchronously because the lisp you wrote isn't always fast enough to avoid the user's notice, but you'd still like it to return as soon as possible.
 
-*** Argument =:keepalive=
-In the above example with completion candidates, a user might rarely delay longer than 100 ms between opening the minibuffer and beginning to type, so there's scant room for overhead like spinning up subprocesses that load a bunch of libraries before getting to work.
+*** Processes stay alive
+A user might rarely delay longer than 100 ms between opening the minibuffer and beginning to type, so there's scant room for overhead like spinning up subprocesses that load a bunch of libraries before getting to work.
 
-Especially if they then die and have to do it all again on the next keystroke.  For these situations, pass =:keepalive t=!
+Thus el-job makes them stick around for up to 30 seconds, awaiting more input.
 
-Then they stick around for up to 30 seconds, awaiting more input.
-
-An aesthetic drawback is cluttering your task manager with many entries called =emacs= every so often.  Users who tend to run system commands such as =pkill emacs= may find that the command occasionally "does not work".
+An aesthetic drawback is cluttering your task manager with many entries called =emacs=.  Users who tend to run system commands such as =pkill emacs= may find that the command occasionally "does not work".
 
 *** Emacs 30 =fast-read-process-output=
 Some libraries, such as [[https://github.com/jwiegley/emacs-async/][async.el]], internally rely on a custom process filter.  Since Emacs 30, it's a particularly good idea to use the built-in process filter, when performance is critical, and thus that's what el-job does.
