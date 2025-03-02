@@ -111,7 +111,10 @@ find the correct file."
     (unless loaded
       (error "Current Lisp definitions must come from a file %S[.el/.elc/.eln]"
              feature))
-    ;; HACK: Sometimes comp.el makes freefn- temp files, fall back on load-path
+    ;; HACK: Sometimes comp.el makes freefn- temp files.  It sounds like we
+    ;;       would not normally see it unless user is evalling defuns in a
+    ;;       scratch buffer, but not sure.  Signal the first time this happens,
+    ;;       then fall back on load-path.
     (when (string-search "freefn-" loaded)
       (unless el-job--onetime-canary
         (setq el-job--onetime-canary t)
@@ -132,10 +135,11 @@ find the correct file."
                     `(lambda (&rest _) ,elc)))
               (when (native-comp-available-p)
                 ;; FIXME: Guix strips the hash from the .eln filename, so
-                ;; compiling now can result in an .eln in ~/.emacs.d that will
-                ;; always take precedence over the one shipped by Guix.  If we
-                ;; want to cover for that, it'd be safer to compile into /tmp
-                ;; with a filename based on emacs-init-time or something.
+                ;; compiling now can result in an .eln in ~/.emacs.d/ that will
+                ;; always take precedence over the one shipped by Guix.
+                ;; If we want to cover for that, it'd be safer to compile into
+                ;; /tmp with a filename based on e.g. `after-init-time'.
+                ;; Users who install FEATURE thru Guix are prolly safe.
                 ;; https://github.com/meedstrom/org-node/issues/68
                 (native-compile-async (list loaded)))
               ;; Native comp may take a while, so build and return .elc this
@@ -381,11 +385,12 @@ INPUTS is a list that will be split by up to the output of
 If INPUTS is omitted, only one subprocess will spawn.
 
 INPUTS can also be a function that returns a list.  In this case, the
-function is not called until actually needed.
+function is deferred until needed, possibly saving on compute.
+
 
 The subprocesses have no access to current Emacs state.  The only way
-they can affect current state, is if FUNCALL-PER-INPUT returns data, which is then
-handled by CALLBACK function in the current Emacs.
+they can affect current state, is if FUNCALL-PER-INPUT returns data,
+which is then handled by CALLBACK function in the current Emacs.
 
 Emacs stays responsive to user input up until all subprocesses finish,
 which is when their results are merged and CALLBACK is executed.
@@ -664,7 +669,7 @@ object.  If nil, infer it from the buffer, if process is still alive."
           (plist-put .timestamps :got-all-results (current-time)) ;; DEPRECATED
           (plist-put .timestamps :callback-begun (current-time))
           ;; Finally the purpose of it all.
-          ;; Did this really take 700 lines of code?
+          ;; Somehow, it took 700 lines of code to get here.
           (setf .merged-results (el-job--zip-all .result-sets))
           (when .callback
             (funcall .callback .merged-results job))
@@ -703,7 +708,7 @@ This kills all process buffers, but does not deregister the ID from
     (rename-buffer (string-trim-left (buffer-name)))))
 
 
-;;; Tools
+;;; Tools / public API
 
 (defun el-job-show-info ()
   "Prompt for a job and show its metadata in a new buffer."
