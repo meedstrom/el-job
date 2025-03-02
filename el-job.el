@@ -284,6 +284,8 @@ See `el-job-launch' for arguments."
                                         :callback callback
                                         :queue inputs)
                        el-jobs)))
+    (when (functionp inputs)
+      (setq inputs (funcall inputs)))
     (el-job--spawn-processes job load-features inject-vars funcall-per-input)
     (el-job--exec job)))
 
@@ -353,14 +355,14 @@ elements:
   (road1 road2)
   (museum1 museum2 museum3))
 
-which is why it's important that FUNCALL always returns a list with a
+which is why it's important that FUNCALL-PER-INPUT always returns a list with a
 fixed-in-advance number of sub-lists, enabling this merge.  Of course,
 these sub-lists are allowed to be empty, i.e. nil.
 
-Alternatively, FUNCALL may always return nil.
+Alternatively, FUNCALL-PER-INPUT may always return nil.
 
 
-FUNCALL is a function symbol known to be defined in an Emacs Lisp file.
+FUNCALL-PER-INPUT is a function symbol known to be defined in an Emacs Lisp file.
 It is the only mandatory argument, but rarely useful on its own.
 
 Usually, you would need to pass the symbol LOAD to indicate where to
@@ -380,8 +382,11 @@ INPUTS is a list that will be split by up to the output of
 `num-processors', and this determines how many subprocesses will spawn.
 If INPUTS is omitted, only one subprocess will spawn.
 
+INPUTS can also be a function that returns a list.  In this case, the
+function is not called until actually needed.
+
 The subprocesses have no access to current Emacs state.  The only way
-they can affect current state, is if FUNCALL returns data, which is then
+they can affect current state, is if FUNCALL-PER-INPUT returns data, which is then
 handled by CALLBACK function in the current Emacs.
 
 Emacs stays responsive to user input up until all subprocesses finish,
@@ -394,23 +399,19 @@ which you can get from this form:
     \(el-job:timestamps JOB)
 
 
-ID identifies this job, and is a symbol, a keyword or an integer below
-536,870,911 \(suitable for `eq').  A non-nil ID has several purposes:
+ID identifies this job, and is a symbol, a keyword, or an integer from
+-536,870,911 to 536,870,911, i.e. something suitable for `eq'.
+A non-nil ID has several purposes:
 
-- Allow the processes to stay alive in the background after completion,
-  to skip spin-up time on next call.
-  May make a difference if they load a lot of libraries.
-  This does not apply if METHOD is `reap'. See `el-job-default-method'.
+- Prevent launching the same job twice, if the last invocation is not
+  done yet.  Argument IF-BUSY regulates what happens instead.
 
 - Allow repeated calls on the same inputs to optimize how those inputs
   are split, thanks to benchmarks from previous calls.
 
-- The associated process buffers stick around and can be inspected for
-  debugging purposes.  Seek buffer names that start with \" *el-job-\"
-  \(note leading space).
-
-- Prevent launching the same job twice, if the last invocation is not
-  done yet.  Argument IF-BUSY regulates what happens instead, see below.
+- The associated process buffers stick around after death and can be
+  inspected for debugging purposes.  Seek buffer names that start with
+  \" *el-job-\" \(note leading space).
 
 
 IF-BUSY comes into effect when the previous launch with the same ID is
@@ -420,38 +421,38 @@ still at work.  IF-BUSY may take on one of three symbols:
                      after all children are ready
 - `noop': do nothing, drop inputs
 - `takeover': kill and restart with the new inputs"
-  (when-let (skip-benchmark (plist-get deprecated-args :skip-benchmark))
+  (when-let* ((skip-benchmark (plist-get deprecated-args :skip-benchmark)))
     (message "el-job-launch: Obsolete argument :skip-benchmark does nothing"))
-  (when-let (eval-once (plist-get deprecated-args :eval-once))
+  (when-let* ((eval-once (plist-get deprecated-args :eval-once)))
     (message "el-job-launch: Obsolete argument :eval-once does nothing"))
-  (when-let (method (plist-get deprecated-args :method))
+  (when-let* ((method (plist-get deprecated-args :method)))
     (message "el-job-launch: Obsolete argument :method, use :keepalive")
     (setq keepalive (not (eq 'reap method))))
-  (when-let (wrapup (plist-get deprecated-args :wrapup))
+  (when-let* ((wrapup (plist-get deprecated-args :wrapup)))
     (message "el-job-launch: Obsolete argument :wrapup now named :callback")
     (setq callback wrapup))
-  (when-let (load (plist-get deprecated-args :load))
+  (when-let* ((load (plist-get deprecated-args :load)))
     (message "el-job-launch: Obsolete argument :load now named :load-features")
     (setq load-features load))
-  (when-let (funcall (plist-get deprecated-args :funcall))
+  (when-let* ((funcall (plist-get deprecated-args :funcall)))
     (message "el-job-launch: Obsolete argument :funcall now named :funcall-per-input")
     (setq funcall-per-input funcall))
-
-  (unless el-job--machine-cores
-    (setq el-job--machine-cores (max 1 (1- (num-processors)))))
-  (setq load-features (ensure-list load-features))
-  (setq if-busy (or if-busy 'wait))
   (unless (and (symbolp funcall-per-input) (functionp funcall-per-input))
-    (error "Argument FUNCALL must be a symbol with a function definition"))
+    (error "Argument FUNCALL-PER-INPUT must be a symbol with a function definition"))
   (when callback
     (unless (and (symbolp callback) (functionp callback))
       (error "Argument CALLBACK must be a symbol with a function definition")))
+  (setq load-features (ensure-list load-features))
+  (setq if-busy (or if-busy 'wait))
+  (unless el-job--machine-cores
+    (setq el-job--machine-cores (max 1 (1- (num-processors)))))
   (if (null id)
       (el-job--launch-anonymous load-features inject-vars funcall-per-input inputs callback)
     (let ((arg-signature (+ (sxhash load-features)
                             (sxhash inject-vars)
-                            (sxhash callback) ;; TODO: permit changing it
-                            (sxhash funcall-per-input)))
+                            (sxhash funcall-per-input)
+                            ;; TODO: permit changing the callback?
+                            (sxhash callback)))
           (job (or (gethash id el-jobs)
                    (puthash id (el-job--make :id id) el-jobs)))
           (respawn nil)
@@ -460,8 +461,7 @@ still at work.  IF-BUSY may take on one of three symbols:
           (.queue .busy .ready .sig .cores .keepalive .spawn-args .callback)
         (setf .keepalive keepalive)
         (unless (and .busy (eq if-busy 'noop))
-          ;; TODO: Can we somehow defer this funcall to a little later, so the
-          ;;       funcall can sometimes be averted?
+          ;; TODO: Can we somehow defer this to even later?
           (when (functionp inputs)
             (setq inputs (funcall inputs)))
           (if .busy
@@ -514,7 +514,8 @@ For the rest of the arguments, see `el-job-launch'."
                            if (symbolp var)
                            collect (cons var (symbol-value var))
                            else collect var)))
-           (libs (prin1-to-string (mapcar #'el-job--ensure-compiled-lib load-features)))
+           (libs (prin1-to-string
+                  (mapcar #'el-job--ensure-compiled-lib load-features)))
            (command
             (list
              (file-name-concat invocation-directory invocation-name)
@@ -547,8 +548,7 @@ For the rest of the arguments, see `el-job-launch'."
             (with-current-buffer (process-buffer proc)
               (setq-local el-job-here job)
               (if .keepalive
-                  (add-hook 'after-change-functions
-                            #'el-job--handle-output-in-buffer-if-done nil t)
+                  (add-hook 'after-change-functions #'el-job--check-done nil t)
                 (set-process-sentinel proc #'el-job--sentinel)))
             (process-send-string proc vars)
             (process-send-string proc "\n")
@@ -568,7 +568,7 @@ This puts them to work.  Each successful child will print output
 should trigger `el-job--handle-output'."
   (el-job--with job
       ( .ready .busy .input-sets .result-sets .queue .cores .past-elapsed
-        .timestamps .finish-times .anonymous .keepalive
+        .timestamps .finish-times .keepalive
         .id .timeout )
     (cancel-timer .timeout)
     (setf .result-sets nil)
@@ -591,24 +591,25 @@ should trigger `el-job--handle-output'."
           (setf (alist-get proc .input-sets) items)
           (with-current-buffer (process-buffer proc)
             (erase-buffer)
+            (remove-hook 'after-change-functions #'el-job--check-done t)
             (process-send-string proc (prin1-to-string items))
             (process-send-string proc "\n")
-            (unless .keepalive
+            (if .keepalive
+                (add-hook 'after-change-functions #'el-job--check-done nil t)
               (process-send-string proc "die\n"))))))
     (setf .queue nil)
-    (plist-put .timestamps :launched (current-time))
+    (plist-put .timestamps :work-begun (current-time))
     (setf .timeout (run-with-timer 30 nil #'el-job--timeout .id))))
 
 (defun el-job--timeout (id)
-  "Terminate job by ID, and print that it timed out."
-  (let ((job (gethash id el-jobs)))
-    (if (and job (el-job:busy job))
-        (progn
-          (el-job--disable job)
-          (message "el-job: Timed out, was busy for 30+ seconds: %s"
-                   (el-job:id job)))
-      (el-job--dbg 1
-          "Timeout timer should have been cancelled for el-job ID %s" id))))
+  "Disable job by ID, and print that it timed out.
+If the job was idle, then do not print, just reap the processes."
+  (when-let* ((job (gethash id el-jobs)))
+    (let ((busy (el-job:busy job)))
+      (el-job--disable job)
+      (if busy
+          (message "el-job: Timed out, was busy for 30+ seconds: %s" id)
+        (el-job--dbg 2 "Reaped idle processes for %s" id)))))
 
 (defun el-job--sentinel (proc event)
   "Handle the output in buffer of finished process PROC.
@@ -616,13 +617,21 @@ For arguments PROC and EVENT, see Info node `(elisp) Sentinels'."
   (with-current-buffer (process-buffer proc)
     (if (and (equal event "finished\n")
              (eq (process-status proc) 'exit)
-             (eq (process-exit-status proc) 0))
+             (eq (process-exit-status proc) 0)
+             (not (el-job:keepalive el-job-here)))
         (el-job--handle-output proc)
       (el-job--unhide-buffer (current-buffer))
       (el-job--unhide-buffer (el-job:stderr el-job-here))
       (message "Child had problems, check buffer %s" (buffer-name)))))
 
-(defun el-job--handle-output-in-buffer-if-done (&rest _)
+;; REVIEW: We use `process-send-string' to send a \n when sending more input (in
+;;         `el-job--exec').
+;;         Can that cause a bug combined with this?
+;;         Could workaround by using a NUL byte: pass 0 instead of ?\n.
+;;         In el-job-child.el, it'll have to use `prin1' rather than `print.'
+;;         Or, we can just remove the change-hook until after we sent the
+;;         aforementioned \n.
+(defun el-job--check-done (&rest _)
   "Handle output in current buffer if it appears complete.
 Can be called in a process buffer at any time."
   (if (eq (char-before) ?\n)
@@ -649,18 +658,19 @@ object.  If nil, infer it from the buffer, if process is still alive."
                           (setq results (cdr output)))
       (( error )
        (el-job--unhide-buffer (el-job:stderr job))
-       (dolist (proc (el-job--all-processes job))
+       (dolist (proc (append (el-job:busy job)
+                             (el-job:ready job)))
          (el-job--unhide-buffer (process-buffer proc))
-         (el-job--kill-quietly-keep-buffer proc))
-       (error "In buffer %S: problems reading child output: %S"
+         (el-job--kill-quietly proc))
+       (error "In buffer %s: problems reading child output: %S"
               (current-buffer) err)))
     (when results
       (el-job--with job
           ( .busy .ready .input-sets .past-elapsed .result-sets .queue
-            .timestamps .id .temp-hook .anonymous .keepalive .finish-times
+            .timestamps .id .anonymous .keepalive .finish-times
             .timeout .callback .merged-results )
         (push finish-time .finish-times)
-        ;; Record time spent by FUNCALL on each item in INPUTS,
+        ;; Record time spent by FUNCALL-PER-INPUT on each item in INPUTS,
         ;; for a better `el-job--split-optimally' in the future.
         (let ((input (alist-get proc .input-sets)))
           (while durations
@@ -673,21 +683,20 @@ object.  If nil, infer it from the buffer, if process is still alive."
 
         ;; Extra actions when this was the last output
         (when (null .busy)
-          (plist-put .timestamps :children-done
-                     (car (last (sort .finish-times #'time-less-p))))
-          ;; TODO: Rename this timestamp, I feel it's not intuitive.
-          ;;       Maybe :callback-begin?
-          (plist-put .timestamps :got-all-results (current-time))
-          ;; Cleanup
-          (cancel-timer .timeout)
-          (when .anonymous
-            (el-job--disable job)
-            (remhash .id el-jobs))
+          (let ((last-done (car (last (sort .finish-times #'time-less-p)))))
+            (plist-put .timestamps :children-done last-done) ;; deprec
+            (plist-put .timestamps :work-done last-done))
+          (plist-put .timestamps :got-all-results (current-time)) ;; deprec
+          (plist-put .timestamps :callback-begun (current-time))
           ;; Finally the purpose of it all.
           ;; Did this really take 700 lines of code?
           (setf .merged-results (el-job--zip-all .result-sets))
           (when .callback
             (funcall .callback .merged-results job))
+          ;; Cleanup
+          (when .anonymous
+            (el-job--disable job)
+            (remhash .id el-jobs))
           (when .queue
             ;; There's more in the queue, run again at next good opportunity.
             (unless .keepalive
@@ -701,38 +710,29 @@ object.  If nil, infer it from the buffer, if process is still alive."
 This kills all process buffers, but does not deregister the ID from
 `el-jobs' nor clear queued input."
   (cancel-timer (el-job:timeout job))
-  (mapc #'el-job--kill-quietly (el-job:busy job))
-  (mapc #'el-job--kill-quietly (el-job:ready job))
+  (dolist (proc (append (el-job:busy job)
+                        (el-job:ready job)))
+    (let ((buf (process-buffer proc)))
+      (kill-buffer buf)
+      (el-job--kill-quietly proc)))
   (setf (el-job:busy job) nil)
   (setf (el-job:ready job) nil)
-  (when-let ((stderr (el-job:stderr job)))
+  (when-let* ((stderr (el-job:stderr job)))
     (kill-buffer stderr)))
+
+(defun el-job--kill-quietly (proc)
+  "Kill PROC while disabling its sentinel and filter."
+  (set-process-filter proc #'ignore)
+  (set-process-sentinel proc #'ignore)
+  (delete-process proc))
 
 (defun el-job--unhide-buffer (buffer)
   "Rename BUFFER to omit initial space, and return the new name."
   (with-current-buffer buffer
     (rename-buffer (string-trim-left (buffer-name)))))
 
-(defun el-job--kill-quietly-keep-buffer (proc)
-  "Kill PROC while disabling its sentinel and filter.
-See `el-job--kill-quietly' to also kill the buffer."
-  (set-process-filter proc #'ignore)
-  (set-process-sentinel proc #'ignore)
-  (delete-process proc))
-
-(defun el-job--kill-quietly (proc)
-  "Delete process PROC and kill its buffer.
-Prevent its sentinel and filter from reacting."
-  (let ((buf (process-buffer proc)))
-    (el-job--kill-quietly-keep-buffer proc)
-    (kill-buffer buf)))
-
 
 ;;; Tools
-
-(defun el-job--all-processes (job)
-  "Return all processes for JOB, busy and ready."
-  (append (el-job:busy job) (el-job:ready job)))
 
 (defun el-job-show ()
   "Prompt for a job and show its metadata in a new buffer."
@@ -747,21 +747,21 @@ Prevent its sentinel and filter from reacting."
       t)))
 
 (defun el-job-kill-all ()
-  "Kill all el-jobs and forget metadata."
+  "Kill all el-jobs ever registered and forget metadata."
   (interactive)
   (maphash (lambda (id job)
              (el-job--disable job)
              (remhash id el-jobs))
            el-jobs))
 
-(defun el-job-await (id timeout &optional message)
+(defun el-job-await (id max-secs &optional message)
   "Block until all processes for job ID finished, then return t.
 
-If the job has still not finished after TIMEOUT seconds, stop
+If the job has still not finished after MAX-SECS seconds, stop
 blocking and return nil.
 
 Meanwhile, ensure string MESSAGE is visible in the minibuffer."
-  (let ((deadline (time-add (current-time) timeout)))
+  (let ((deadline (time-add (current-time) max-secs)))
     (catch 'timeout
       (while (el-job-is-busy id)
         (discard-input)
@@ -774,7 +774,7 @@ Meanwhile, ensure string MESSAGE is visible in the minibuffer."
 (defun el-job-is-busy (id)
   "Return list of busy processes for job ID, if any.
 Safely return nil otherwise, whether or not ID is known."
-  (when-let ((job (gethash id el-jobs)))
+  (when-let* ((job (gethash id el-jobs)))
     (el-job:busy job)))
 
 (provide 'el-job)

@@ -34,16 +34,6 @@ and each element in them must be a list or nil."
     (when meta-list2 (error "Lists differed in length"))
     (nreverse merged)))
 
-(defun el-job-child--receive-injection ()
-  "Handle :inject-vars and :load."
-  (let ((vars (read-minibuffer ""))
-        (libs (read-minibuffer "")))
-    (dolist (var vars)
-      (set (car var) (cdr var)))
-    (dolist (lib libs)
-      (load lib))))
-
-(defvar el-job-child--ready nil)
 (defun el-job-child--work (func &optional _)
   "Handle input from mother process `el-job--exec' and print a result.
 
@@ -56,29 +46,40 @@ FUNC comes from the :funcall argument of `el-job-launch'.
 
 Benchmark how long FUNC took to handle each item, and
 add that information to the final return value."
-  (unless el-job-child--ready
-    (setq el-job-child--ready t)
-    (el-job-child--receive-injection))
+  ;; Receive injection
+  (let ((vars (read-minibuffer ""))
+        (libs (read-minibuffer "")))
+    (dolist (var vars)
+      (set (car var) (cdr var)))
+    (dolist (lib libs)
+      (load lib)))
+  ;; Begin infinite loop, treating each further input from parent as a list of
+  ;; things to map to FUNC.
   (catch 'die
     (while-let ((input (read-minibuffer "")))
       (when (eq input 'die)
         (throw 'die nil))
       (let ((current-time-list nil) ;; Fewer cons cells
-            item start output meta results)
+            item start output metadata results)
         (if input
             (while input
               (setq item (pop input))
               (setq start (current-time))
               (setq output (funcall func item))
-              (push (time-since start) meta)
-              ;; May affect the durations erratically, so do this step now after benchmarks done.
+              (push (time-since start) metadata)
+              ;; REVIEW: `el-job-child--zip' could take nonzero time, not sure
+              ;; if it should be included in the benchmark.  If yes, move this
+              ;; up to above the line that has `time-since'.  Reason not is
+              ;; maybe runtime changes the longer the `results' gets, and then
+              ;; that is not a good benchmark of `item'.
               (setq results (el-job-child--zip output results)))
-          (funcall func))
+          (funcall func)) ;; ??
         ;; Ensure durations are in same order that ITEMS came in, letting us
         ;; associate which with which just by index.
-        (setq meta (nreverse meta))
-        ;; Timestamp the finish-time.  Will be the very `car' of the metadata.
-        (push (current-time) meta)
+        (setq metadata (nreverse metadata))
+        ;; Timestamp the finish-time.  Note that makes the `car' of the
+        ;; metadata qualitatively different.
+        (push (current-time) metadata)
         (let ((print-length nil)
               (print-level nil)
               ;; Even though we had set :coding 'utf-8-emacs-unix in the
@@ -88,7 +89,7 @@ add that information to the final return value."
               (print-circle t)
               (print-escape-newlines t)
               (print-symbols-bare t))
-          (print (cons meta results)))))))
+          (print (cons metadata results)))))))
 
 (provide 'el-job-child)
 
