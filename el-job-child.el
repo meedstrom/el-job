@@ -21,17 +21,17 @@
 
 ;;; Code:
 
-(defun el-job-child--zip (metalist1 metalist2)
-  "Destructively zip two alists into one.
+(defun el-job-child--zip (meta-list1 meta-list2)
+  "Destructively zip two lists into one.
 Like the Dash expression \(-zip-with #\\='nconc list1 list2).
 
-METALIST1 and METALIST2 must be proper lists of identical length,
-and each element in them must be a proper list or nil."
+META-LIST1 and META-LIST2 must be lists of identical length,
+and each element in them must be a list or nil."
   (let (merged)
-    (while metalist1
-      (push (nconc (pop metalist1) (pop metalist2))
+    (while meta-list1
+      (push (nconc (pop meta-list1) (pop meta-list2))
             merged))
-    (when metalist2 (error "Lists differed in length"))
+    (when meta-list2 (error "Lists differed in length"))
     (nreverse merged)))
 
 (defun el-job-child--receive-injection ()

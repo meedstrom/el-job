@@ -97,15 +97,15 @@ editing."
   "Look for the .eln, .elc or .el file corresponding to FEATURE.
 FEATURE is a symbol such as those seen in `features'.
 
-Guess which variant was in fact loaded by the current Emacs,
-and return it if it is .elc or .eln.
+See `el-job--locate-lib-in-load-history'.
 
 If it is .el, then opportunistically compile it and return the newly
-compiled file instead.  This returns an .elc on the first call, then an
-.eln on future calls.
+compiled file instead.  This returns an .elc on the first call, then
+most likely an .eln on future calls.
 
-Note: if you are currently editing the source code for FEATURE, save it
-and use \\[eval-buffer] to ensure this will find the correct file."
+Note: if you are currently editing the source code for FEATURE, save
+that file of source code and use \\[eval-buffer] to ensure this will
+find the correct file."
   (let ((loaded (el-job--locate-lib-in-load-history feature)))
     (unless loaded
       (error "Current Lisp definitions must come from a file %S[.el/.elc/.eln]"
@@ -114,6 +114,9 @@ and use \\[eval-buffer] to ensure this will find the correct file."
     ;;       .el that's in load-path, instead.  Bad hack, because load-path is
     ;;       NOT as trustworthy as load-history (current Emacs may not be using
     ;;       the thing in load-path).
+    ;; REVIEW: Can we actually remove the hack?  I'd assume freefn- files are
+    ;;         only created when the source file is unknown, which would best
+    ;;         signal an error here.
     (when (string-search "freefn-" loaded)
       (setq loaded
             (locate-file (symbol-name feature) load-path '(".el" ".el.gz"))))
@@ -157,18 +160,34 @@ and use \\[eval-buffer] to ensure this will find the correct file."
       ;; the point the developer actually evals the .el buffer.
       loaded)))
 
+(defun el-job--split-evenly (big-list n &optional _)
+  "Split BIG-LIST into a list of up to N sublists.
+
+In the unlikely case where BIG-LIST contains N or fewer elements,
+the result looks just like BIG-LIST except that
+each element is wrapped in its own list."
+  (let ((sublist-length (max 1 (/ (length big-list) n)))
+        result)
+    (dotimes (i n)
+      (if (= i (1- n))
+          ;; Let the last iteration just take what's left
+          (push big-list result)
+        (push (take sublist-length big-list) result)
+        (setq big-list (nthcdr sublist-length big-list))))
+    (delq nil result)))
+
 (defun el-job--split-optimally (items n-cores table)
   "Split ITEMS into up to N-CORES lists of items.
 
 For all keys in TABLE that match one of ITEMS, assume the value holds a
 benchmark \(a Lisp time value) for how long it took in the past to pass
-this item through the FUNCALL function specified by `el-job-launch'.
+this item through the FUNCALL-PER-INPUT function specified by `el-job-launch'.
 
 Use these benchmarks to rebalance the lists so that each sub-list should
-take around the same total wall-time to work through this time.
+take around the same amount of wall-time to work through.
 
-This reduces the risk that one child takes noticably longer due to
-being saddled with a mega-item in addition to the average workload."
+This reduces the risk that one child takes markedly longer due to
+being saddled with a huge item in addition to the average workload."
   (let ((total-duration 0))
     (cond
      ((= n-cores 1)
@@ -177,7 +196,7 @@ being saddled with a mega-item in addition to the average workload."
       (el-job--split-evenly items n-cores))
      ((progn
         (dolist (item items)
-          (when-let ((dur (gethash item table)))
+          (when-let* ((dur (gethash item table)))
             (setq total-duration (time-add total-duration dur))))
         (eq total-duration 0))
       ;; Probably a first-time run
@@ -214,7 +233,7 @@ being saddled with a mega-item in addition to the average workload."
                     (push item items)))))))
         (if (length= sublists 0)
             (progn
-              (fset 'el-job--split-optimally 'el-job--split-evenly)
+              (fset 'el-job--split-optimally #'el-job--split-evenly)
               (error "el-job: Unexpected code path, report appreciated! Data: %S"
                      (list 'n-cores n-cores
                            'total-duration total-duration
@@ -233,22 +252,6 @@ being saddled with a mega-item in addition to the average workload."
                           sublists)))))
         sublists)))))
 
-(defun el-job--split-evenly (big-list n &optional _)
-  "Split BIG-LIST into a list of up to N sublists.
-
-In the unlikely case where BIG-LIST contains N or fewer elements,
-the result looks just like BIG-LIST except that
-each element is wrapped in its own list."
-  (let ((sublist-length (max 1 (/ (length big-list) n)))
-        result)
-    (dotimes (i n)
-      (if (= i (1- n))
-          ;; Let the last iteration just take what's left
-          (push big-list result)
-        (push (take sublist-length big-list) result)
-        (setq big-list (nthcdr sublist-length big-list))))
-    (delq nil result)))
-
 (defun el-job--zip-all (meta-lists)
   "Destructively zip all META-LISTS into one.
 See subroutine `el-job-child--zip' for details."
@@ -258,7 +261,7 @@ See subroutine `el-job-child--zip' for details."
     merged))
 
 
-;;; Main logic:
+;;; Main logic
 
 (defvar el-job--machine-cores nil
   "Max amount of processes to spawn for one job.
@@ -285,7 +288,7 @@ See `el-job-launch' for arguments."
     (el-job--exec job)))
 
 (defmacro el-job--with (job slots &rest body)
-  "Make SLOTS expand into object accessors for el-job JOB inside BODY.
+  "Make SLOTS expand into object accessors for `el-job' JOB inside BODY.
 Cf. `with-slots' in the eieio library, or `let-alist'.
 
 For clarity inside BODY, each symbol name in SLOTS must be prepended
@@ -324,15 +327,15 @@ with one character of your choosing, such as a dot."
 ;;;###autoload
 (cl-defun el-job-launch ( &rest deprecated-args
                           &key
-                          load-features
-                          inject-vars
-                          funcall-per-input
-                          inputs
-                          callback
                           id
                           if-busy
+                          load-features
+                          inject-vars
+                          inputs
+                          funcall-per-input
+                          callback
                           keepalive )
-  "Run FUNCALL in one or more headless Elisp processes.
+  "Run FUNCALL-PER-INPUT in one or more headless Elisp processes.
 Then merge the return values \(lists of N lists) into one list
 \(of N lists) and pass it to CALLBACK.
 
