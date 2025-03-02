@@ -1,27 +1,46 @@
+# Copying and distribution of this file, with or without modification,
+# are permitted in any medium without royalty provided the copyright
+# notice and this notice are preserved.  This file is offered as-is,
+# without any warranty.
 #+HTML: <a href="https://melpa.org/#/el-job"><img alt="MELPA" src="https://melpa.org/packages/el-job-badge.svg"/></a> <a href="https://stable.melpa.org/#/el-job"><img alt="MELPA Stable" src="https://stable.melpa.org/packages/el-job-badge.svg"/></a>
 
 * el-job
 Imagine you have a function you'd like to run on a long list of inputs.  You could run =(mapcar #'FN INPUTS)=, but that hangs Emacs until done.
 
-This library is a tool to split up the inputs and run the function in many subprocesses (one per CPU core), then merge their outputs and pass it back to the current Emacs.  In the meantime, current Emacs does not hang at all.
+This library is a tool to run the same function in many subprocesses (one per CPU core), each with their own split of the =INPUTS= list, then merge their outputs and pass it back to the current Emacs.
+
+In the meantime, current Emacs does not hang at all.
 
 Best of all, it completes /faster/ than =(mapcar #'FN INPUTS)=, owing to the use of all CPU cores!
 
 For real-world usage, search for =el-job-launch= in the source of [[https://github.com/meedstrom/org-node/blob/main/org-node.el][org-node.el]].
 
 ** Design rationale
+I want to shorten the round-trip as much as possible, *between the start of an async task and having the results*.
 
-I wanted was to shorten the round-trip as much as possible, *between the start of an async task and having the results*.  For example, say you have some lisp that collects completion candidates, and you want async because your lisp isn't always be fast enough to avoid bothering the user, but you'd still like it to return as soon as possible.
+For example, say you have some lisp that collects completion candidates, and you want to run it asynchronously because the lisp you wrote isn't always fast enough to avoid the user's notice, but you'd still like it to return as soon as possible.
 
-A user might delay less than 100 ms between opening the minibuffer and beginning to type, so there's no room for overhead like spinning up subprocesses that load a bunch of libraries before getting to work.  Accordingly, this library keeps its subprocesses alive forever.
+*** Argument =:keepalive=
+In the above example with completion candidates, a user might rarely delay longer than 100 ms between opening the minibuffer and beginning to type, so there's scant room for overhead like spinning up subprocesses that load a bunch of libraries before getting to work.
 
-An aesthetic drawback is cluttering your task manager with many entries that say =emacs=.  Check =M-x list-processes=.  They are safe to terminate if you want.
+Especially if they then die and have to do it all again on the next keystroke.  For these situations, pass =:keepalive t=!
+
+Then they stick around for up to 30 seconds, awaiting more input.
+
+An aesthetic drawback is cluttering your task manager with many entries called =emacs= every so often.  Users who tend to run system commands such as =pkill emacs= may find that the command occasionally "does not work".
+
+*** Emacs 30 =fast-read-process-output=
+Some libraries, such as [[https://github.com/jwiegley/emacs-async/][async.el]], internally rely on a custom process filter.  Since Emacs 30, it's a particularly good idea to use the built-in process filter, when performance is critical, and thus that's what el-job does.
+
+A corollary: if you're testing this on Emacs 29 or below, you don't see this library at its best performance.
+
+** News 1.0.0
+- No longer keeps processes alive forever by default.  Instead it is opt-in via =:keepalive t=, and they are reaped anyway after up to 30 seconds of disuse.
+- Many arguments changed, and a few were removed.  Consult the docstring of =el-job-launch= again.
 
 ** Limitations
 
-1. Will *drop support for Emacs 28/29* sometime in mid-2025 (when Debian trixie is released).  For a backwards-compatible library, try [[https://github.com/jwiegley/emacs-async][async.el]].
-
-2. The return value from the =:funcall= function must always be a list with a fixed length, where the elements are themselves lists.  For example, the return value at the end of [[https://github.com/meedstrom/org-node/blob/main/org-node-parser.el][org-node-parser.el]]:
+1. The return value from the =:funcall-per-input= function must always be a list with a fixed length, where the elements are themselves lists.  For example, see the return value at the end of [[https://github.com/meedstrom/org-node/blob/main/org-node-parser.el][org-node-parser.el]]:
 
    #+begin_src elisp
    (list (if missing-file (list missing-file)) ; List of 1 item or nil
@@ -32,8 +51,16 @@ An aesthetic drawback is cluttering your task manager with many entries that say
          (if problem (list problem))))         ; List of 1 item or nil
    #+end_src
 
-   May seem clunky when you return lists of only one item, but you may consider it a minor expense in exhcnage for simpler library code.
+   May seem clunky to return lists of only one item, but you could consider it a minor expense in exchange for simpler library code.
 
-3. Some data types cannot be exchanged with the children: those whose printed form look like =#<...>=.  For example, =#<buffer notes.org>=, =#<obarray n=94311>=, =#<marker at 3102 in README.org>=.
+2. Some data types cannot be exchanged with the children: those whose printed form look like =#<...>=.  For example, =#<buffer notes.org>=, =#<obarray n=94311>=, =#<marker at 3102 in README.org>=.
 
-   To my knowledge, this sort of data usually has meaning only within the current process, so you would never want to do that anyway.  In days past, *hash tables* also took that form, but not since Emacs 25 or so: their printed form are =#s(hash-table data ...)=, which works fine to send.
+   To my knowledge, this sort of data usually has meaning only within the current process, so you would never want to do that anyway.
+
+   In days past, hash tables also took that form, but not since Emacs 25 or so: their printed form looks like =#s(hash-table data ...)=, which works fine to send.
+
+3. Emacs versions 29 and below seem to incur a performance hit when using =:keepalive t=.  I may or may not have a solution in the works.
+
+4. Due to #3 and other reasons, I am *likely to drop support for Emacs 28* sometime mid-2025, one month after the release of Debian trixie.
+
+   Emacs 29 may *also* be dropped.
