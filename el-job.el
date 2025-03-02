@@ -293,20 +293,18 @@ with one character of your choosing, such as a dot."
                       (:copier nil)
                       (:conc-name el-job:))
   id
-  (sig 0)
   (cores-to-use 1)
   callback
   (ready nil :documentation "Processes ready for input.  Becomes nil permanently if METHOD is `reap'.")
   (busy nil :documentation "Processes that have not yet returned output.")
   stderr
-  (timestamps (list :accept-launch-request (current-time) ;; DEPRECATED
-                    :launched (current-time)))
+  (timestamps (list :initial-job-creation (current-time)))
   (timeout (timer-create))
   finish-times
-  (past-elapsed (make-hash-table :test #'equal))
   spawn-args
-  input-sets
+  (past-elapsed (make-hash-table :test #'equal))
   queued-inputs
+  input-sets
   result-sets
   merged-results)
 
@@ -319,8 +317,7 @@ with one character of your choosing, such as a dot."
                           inject-vars
                           inputs
                           funcall-per-input
-                          callback
-                          )
+                          callback )
   "Run FUNCALL-PER-INPUT in one or more headless Elisp processes.
 Then merge the return values \(lists of N lists) into one list
 \(of N lists) and pass it to CALLBACK.
@@ -406,7 +403,10 @@ still at work.  IF-BUSY may take on one of three symbols:
 - `wait' \(default): append the inputs to a queue, to be handled
                      after all children are ready
 - `noop': do nothing, drop inputs
-- `takeover': kill and restart with the new inputs"
+- `takeover': kill and restart with the new inputs
+
+Transitional argument DEPRECATED-ARGS handles old calling conventions."
+  ;; Big crop of v1.0 changes.  Ugly, remove in April.
   (when (plist-get deprecated-args :skip-benchmark)
     (message "el-job-launch: Obsolete argument :skip-benchmark does nothing"))
   (when (plist-get deprecated-args :eval-once)
@@ -443,18 +443,14 @@ still at work.  IF-BUSY may take on one of three symbols:
                                  inject-vars
                                  funcall-per-input)
         (el-job--exec anonymous-job))
-    (let ((arg-signature (+ (sxhash load-features)
-                            (sxhash inject-vars)
-                            (sxhash funcall-per-input)
-                            ;; TODO: permit changing the callback?
-                            (sxhash callback)))
-          (job (or (gethash id el-jobs)
+    (let ((job (or (gethash id el-jobs)
                    (puthash id (el-job--make :id id) el-jobs)))
           (respawn nil)
           (exec nil))
-      (el-job--with job
-          (.queued-inputs .busy .ready .sig .cores-to-use .spawn-args .callback)
+      (el-job--with job ( .queued-inputs .busy .ready .cores-to-use
+                          .spawn-args .callback .timestamps )
         (unless (and .busy (eq if-busy 'noop))
+          (plist-put .timestamps :launched (current-time))
           ;; TODO: Can we somehow defer this to even later?
           (when (functionp inputs)
             (setq inputs (funcall inputs)))
@@ -467,26 +463,25 @@ still at work.  IF-BUSY may take on one of three symbols:
             (setf .queued-inputs inputs)
             (setq exec t))
           (when exec
-            ;; Only increment to e.g. 7 standby processes if it was ever called
-            ;; with 7+ inputs at the same time
             (when (< .cores-to-use el-job--machine-cores)
-              (setf .cores-to-use (min el-job--machine-cores
-                                       (max .cores-to-use (length .queued-inputs)))))
+              (setf .cores-to-use
+                    (min el-job--machine-cores
+                         (max .cores-to-use (length .queued-inputs)))))
             (unless (and (= .cores-to-use (+ (length .busy) (length .ready)))
                          (seq-every-p #'process-live-p .ready)
                          (seq-every-p #'process-live-p .busy))
-              (el-job--dbg 1 "Found dead processes, resetting job %s" id)
               (setq respawn t))
-            (setq arg-signature (+ arg-signature .cores-to-use))
-            (when (/= .sig arg-signature)
-              (setf .sig arg-signature)
-              (setf .spawn-args (list job load-features inject-vars funcall-per-input))
-              (el-job--dbg 2 "New arguments, resetting job %s" id)
-              (setq respawn t))
+            (let ((new-spawn-args
+                   (list job load-features inject-vars funcall-per-input)))
+              (unless (eq (sxhash (cdr .spawn-args))
+                          (sxhash (cdr new-spawn-args)))
+                (setf .spawn-args new-spawn-args)
+                (el-job--dbg 2 "New arguments, resetting processes for %s" id)
+                (setq respawn t)))
             (setf .callback callback)
             (when respawn
               (el-job--disable job)
-              (el-job--spawn-processes job load-features inject-vars funcall-per-input))
+              (apply #'el-job--spawn-processes .spawn-args))
             (el-job--exec job)
             t))))))
 
