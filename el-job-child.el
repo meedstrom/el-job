@@ -1,6 +1,6 @@
 ;;; el-job-child.el --- Worker code for children  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024 Martin Edström
+;; Copyright (C) 2024-2025 Martin Edström
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by

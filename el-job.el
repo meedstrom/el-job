@@ -1,6 +1,6 @@
-;;; el-job.el --- Call a function using all CPU cores -*- lexical-binding: t; -*-
+;;; el-job.el --- Contrived way to call a function using all CPU cores -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024 Martin Edström
+;; Copyright (C) 2024-2025 Martin Edström
 ;;
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -16,13 +16,10 @@
 ;; along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 ;; Author:           Martin Edström <meedstrom91@gmail.com>
-;; Created:          2024-10-30
 ;; URL:              https://github.com/meedstrom/el-job
+;; Created:          2024-10-30
 ;; Keywords:         processes
 ;; Package-Requires: ((emacs "28.1") (compat "30"))
-
-;; NOTE: Looking for Package-Version?
-;;       Consult your package manager, or the Git tag.
 
 ;;; Commentary:
 
@@ -42,9 +39,11 @@
 (require 'compat)
 (require 'el-job-child)
 
-(defvar el-job-major-version 1)
+(defvar el-job-major-version 1
+  "Number incremented for breaking changes.")
 
-;;; Subroutines:
+
+;;; Subroutines
 
 (defvar el-job--debug-level 0
   "Increase this to 1 or 2 to see more debug messages.")
