@@ -93,6 +93,7 @@ editing."
                   (symbol-function (cdr hit)))))))
         (car hit))))
 
+(defvar el-job--onetime-canary nil)
 (defun el-job--ensure-compiled-lib (feature)
   "Look for the .eln, .elc or .el file corresponding to FEATURE.
 FEATURE is a symbol such as those seen in `features'.
@@ -110,14 +111,11 @@ find the correct file."
     (unless loaded
       (error "Current Lisp definitions must come from a file %S[.el/.elc/.eln]"
              feature))
-    ;; HACK: Sometimes comp.el makes freefn- temp files; pretend we found the
-    ;;       .el that's in load-path, instead.  Bad hack, because load-path is
-    ;;       NOT as trustworthy as load-history (current Emacs may not be using
-    ;;       the thing in load-path).
-    ;; REVIEW: Can we actually remove the hack?  I'd assume freefn- files are
-    ;;         only created when the source file is unknown, which would best
-    ;;         signal an error here.
+    ;; HACK: Sometimes comp.el makes freefn- temp files, fall back on load-path
     (when (string-search "freefn-" loaded)
+      (unless el-job--onetime-canary
+        (setq el-job--onetime-canary t)
+        (error "Could not find real file for feature %S, found %s" loaded))
       (setq loaded
             (locate-file (symbol-name feature) load-path '(".el" ".el.gz"))))
     (if (or (string-suffix-p ".el" loaded)
@@ -280,9 +278,9 @@ See `el-job-launch' for arguments."
   (let* ((id (intern (format-time-string "%FT%H%M%S%N")))
          (job (puthash id (el-job--make :id id
                                         :anonymous t
-                                        :cores el-job--machine-cores
+                                        :cores-to-use el-job--machine-cores
                                         :callback callback
-                                        :queue inputs)
+                                        :queued-inputs inputs)
                        el-jobs)))
     (when (functionp inputs)
       (setq inputs (funcall inputs)))
@@ -310,18 +308,19 @@ with one character of your choosing, such as a dot."
   id
   anonymous
   (sig 0)
-  (cores 1)
+  (cores-to-use 1)
   callback
   (ready nil :documentation "Processes ready for input.  Becomes nil permanently if METHOD is `reap'.")
   (busy nil :documentation "Processes that have not yet returned output.")
   stderr
-  (timestamps (list :accept-launch-request (current-time)))
+  (timestamps (list :accept-launch-request (current-time) ;; DEPRECATED
+                    :launched (current-time)))
   (timeout (timer-create))
   finish-times
   (past-elapsed (make-hash-table :test #'equal))
   spawn-args
   input-sets
-  queue
+  queued-inputs
   result-sets
   merged-results)
 
@@ -456,7 +455,7 @@ still at work.  IF-BUSY may take on one of three symbols:
           (respawn nil)
           (exec nil))
       (el-job--with job
-          (.queue .busy .ready .sig .cores .spawn-args .callback)
+          (.queued-inputs .busy .ready .sig .cores-to-use .spawn-args .callback)
         (unless (and .busy (eq if-busy 'noop))
           ;; TODO: Can we somehow defer this to even later?
           (when (functionp inputs)
@@ -465,22 +464,22 @@ still at work.  IF-BUSY may take on one of three symbols:
               (pcase if-busy
                 ('takeover (setq respawn t)
                            (setq exec t)
-                           (setf .queue inputs))
-                ('wait (setf .queue (append inputs .queue))))
-            (setf .queue inputs)
+                           (setf .queued-inputs inputs))
+                ('wait (setf .queued-inputs (append inputs .queued-inputs))))
+            (setf .queued-inputs inputs)
             (setq exec t))
           (when exec
             ;; Only increment to e.g. 7 standby processes if it was ever called
             ;; with 7+ inputs at the same time
-            (when (< .cores el-job--machine-cores)
-              (setf .cores (min el-job--machine-cores
-                                (max .cores (length .queue)))))
-            (unless (and (= .cores (+ (length .busy) (length .ready)))
+            (when (< .cores-to-use el-job--machine-cores)
+              (setf .cores-to-use (min el-job--machine-cores
+                                       (max .cores-to-use (length .queued-inputs)))))
+            (unless (and (= .cores-to-use (+ (length .busy) (length .ready)))
                          (seq-every-p #'process-live-p .ready)
                          (seq-every-p #'process-live-p .busy))
               (el-job--dbg 1 "Found dead processes, resetting job %s" id)
               (setq respawn t))
-            (setq arg-signature (+ arg-signature .cores))
+            (setq arg-signature (+ arg-signature .cores-to-use))
             (when (/= .sig arg-signature)
               (setf .sig arg-signature)
               (setf .spawn-args (list job load-features inject-vars funcall-per-input))
@@ -497,7 +496,7 @@ still at work.  IF-BUSY may take on one of three symbols:
 (defun el-job--spawn-processes (job load-features inject-vars funcall-per-input)
   "Spin up processes for JOB, standing by for input.
 For the rest of the arguments, see `el-job-launch'."
-  (el-job--with job (.stderr .id .cores .ready)
+  (el-job--with job (.stderr .id .cores-to-use .ready)
     (let* ((print-length nil)
            (print-level nil)
            (print-circle t)
@@ -527,7 +526,7 @@ For the rest of the arguments, see `el-job-launch'."
               (erase-buffer)
               (current-buffer)))
       (condition-case err
-          (dotimes (i .cores)
+          (dotimes (i .cores-to-use)
             (setq proc (make-process
                         :name (format "el-job:%s:%d" .id i)
                         :noquery t
@@ -560,13 +559,13 @@ This puts them to work.  Each successful child will print output
 \(even nil output) to its associated process buffer, whereupon something
 should trigger `el-job--handle-output'."
   (el-job--with job
-      ( .ready .busy .input-sets .result-sets .queue .cores .past-elapsed
+      ( .ready .busy .input-sets .result-sets .queued-inputs .cores-to-use .past-elapsed
         .timestamps .finish-times
         .id .timeout )
     (cancel-timer .timeout)
     (setf .result-sets nil)
     (setf .finish-times nil)
-    (let ((splits (el-job--split-optimally .queue .cores .past-elapsed)))
+    (let ((splits (el-job--split-optimally .queued-inputs .cores-to-use .past-elapsed)))
       (unless (length< splits (1+ (length .ready)))
         (error "Items split in %d lists, but only %d ready processes"
                (length splits) (length .ready)))
@@ -588,7 +587,7 @@ should trigger `el-job--handle-output'."
             (process-send-string proc (prin1-to-string items))
             (process-send-string proc "\n")
             (add-hook 'after-change-functions #'el-job--check-done nil t)))))
-    (setf .queue nil)
+    (setf .queued-inputs nil)
     (plist-put .timestamps :work-begun (current-time))
     (setf .timeout (run-with-timer 30 nil #'el-job--timeout .id))))
 
@@ -644,16 +643,15 @@ object.  If nil, infer it from the buffer, if process is still alive."
               (current-buffer) err)))
     (when results
       (el-job--with job
-          ( .busy .ready .input-sets .past-elapsed .result-sets .queue
+          ( .busy .ready .input-sets .past-elapsed .result-sets .queued-inputs
             .timestamps .id .anonymous .finish-times
             .timeout .callback .merged-results )
         (push finish-time .finish-times)
         ;; Record time spent by FUNCALL-PER-INPUT on each item in INPUTS,
         ;; for a better `el-job--split-optimally' in the future.
-        (let ((input (alist-get proc .input-sets)))
+        (let ((inputs (alist-get proc .input-sets)))
           (while durations
-            (puthash (pop input) (pop durations) .past-elapsed)))
-        ;; The `car' was just this library's metadata
+            (puthash (pop inputs) (pop durations) .past-elapsed)))
         (push results .result-sets)
         (setf .busy (delq proc .busy))
         (push proc .ready)
@@ -674,7 +672,7 @@ object.  If nil, infer it from the buffer, if process is still alive."
           (when .anonymous
             (el-job--disable job)
             (remhash .id el-jobs))
-          (when .queue
+          (when .queued-inputs
             (el-job--exec job))))))
   t)
 
