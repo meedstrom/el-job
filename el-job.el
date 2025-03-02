@@ -178,12 +178,13 @@ each element is wrapped in its own list."
         (setq big-list (nthcdr sublist-length big-list))))
     (delq nil result)))
 
-(defun el-job--split-optimally (items n-cores table)
+(defun el-job--split-optimally (items n-cores benchmarks)
   "Split ITEMS into up to N-CORES lists of items.
 
-For all keys in TABLE that match one of ITEMS, assume the value holds a
-benchmark \(a Lisp time value) for how long it took in the past to pass
-this item through the FUNCALL-PER-INPUT function specified by `el-job-launch'.
+For all keys in table BENCHMARKS that match one of ITEMS, assume the
+value holds a benchmark \(a Lisp time value) for how long it took in the
+past to pass this item through the FUNCALL-PER-INPUT function specified
+by `el-job-launch'.
 
 Use these benchmarks to rebalance the lists so that each sub-list should
 take around the same amount of wall-time to work through.
@@ -198,7 +199,7 @@ being saddled with a huge item in addition to the average workload."
       (el-job--split-evenly items n-cores))
      ((progn
         (dolist (item items)
-          (when-let* ((dur (gethash item table)))
+          (when-let* ((dur (gethash item benchmarks)))
             (setq total-duration (time-add total-duration dur))))
         (eq total-duration 0))
       ;; Probably a first-time run
@@ -215,7 +216,7 @@ being saddled with a huge item in addition to the average workload."
             (if (length= sublists n-cores)
                 (progn (push item items)
                        (throw 'filled t))
-              (setq dur (gethash item table))
+              (setq dur (gethash item benchmarks))
               (if (null dur)
                   (push item untimed)
                 (setq dur (float-time dur))
