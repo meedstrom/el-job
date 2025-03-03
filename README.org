@@ -36,6 +36,7 @@ A corollary: if you're testing this on Emacs 29 or below, you don't see this lib
 - No longer keeps processes alive forever.  All jobs are kept alive for up to 30 seconds of disuse, then reaped.
 - Pruned many code paths
 - Many arguments changed, and a few were removed.  Consult the docstring of =el-job-launch= again.
+- Users of Emacs 29 and below may see a worsened performance compared to v0.3; this is temporary and will be rectified.
 
 ** Limitations
 
