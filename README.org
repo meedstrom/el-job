@@ -33,7 +33,8 @@ Some libraries, such as [[https://github.com/jwiegley/emacs-async/][async.el]], 
 A corollary: if you're testing this on Emacs 29 or below, you don't see this library at its best performance.
 
 ** News 1.0.0
-- No longer keeps processes alive forever by default.  Instead it is opt-in via =:keepalive t=, and they are reaped anyway after up to 30 seconds of disuse.
+- No longer keeps processes alive forever.  All jobs are kept alive for up to 30 seconds of disuse, then reaped.
+- Pruned many code paths
 - Many arguments changed, and a few were removed.  Consult the docstring of =el-job-launch= again.
 
 ** Limitations
