@@ -28,7 +28,7 @@ Thus el-job makes them stick around for up to 30 seconds, awaiting more input.
 An aesthetic drawback is cluttering your task manager with many entries called =emacs=.  Users who tend to run system commands such as =pkill emacs= may find that the command occasionally "does not work".
 
 *** Emacs 30 =fast-read-process-output=
-Some libraries, such as [[https://github.com/jwiegley/emacs-async/][async.el]], internally rely on a custom process filter.  Since Emacs 30, it's a particularly good idea to use the built-in process filter, when performance is critical, and thus that's what el-job does.
+Some libraries, such as [[https://github.com/jwiegley/emacs-async/][async.el]], internally rely on a custom process filter.  Since Emacs 30, it's a particularly good idea to use the built-in process filter when performance is critical, and thus that's what el-job does.
 
 A corollary: if you're testing this on Emacs 29 or below, you don't see this library at its best performance.
 
@@ -36,7 +36,7 @@ A corollary: if you're testing this on Emacs 29 or below, you don't see this lib
 - No longer keeps processes alive forever.  All jobs are kept alive for up to 30 seconds of disuse, then reaped.
 - Pruned many code paths
 - Many arguments changed, and a few were removed.  Consult the docstring of =el-job-launch= again.
-- Users of Emacs 29 and below may see a worsened performance compared to v0.3; this is temporary and will be rectified.
+- Users of Emacs 29 and below may see a worsened performance in el-job v1.0 compared to v0.3; this is temporary and will be rectified.
 
 ** Limitations
 
