@@ -295,7 +295,7 @@ with one character of your choosing, such as a dot."
   id
   (cores-to-use 1)
   callback
-  (ready nil :documentation "Processes ready for input.  Becomes nil permanently if METHOD is `reap'.")
+  (ready nil :documentation "Processes ready for input.")
   (busy nil :documentation "Processes that have not yet returned output.")
   stderr
   (timestamps (list :initial-job-creation (current-time)))
@@ -599,10 +599,10 @@ If the job was idle, just reap the processes and print nothing."
           (message "el-job: Timed out, was busy for 30+ seconds: %s" desc)
         (el-job--dbg 2 "Reaped idle processes for %s" desc)))))
 
-;; REVIEW: We use `process-send-string' to send a \n when sending more input (in
-;;         `el-job--exec').
+;; REVIEW: We use `process-send-string' to send a \n when sending more input
+;;         (in `el-job--exec').
 ;;         Can that cause a bug combined with this?
-;;         Could workaround by using a NUL byte: pass 0 instead of ?\n.
+;;         Could workaround by using a NUL byte: 0 instead of ?\n.
 ;;         In el-job-child.el, it'll have to use `prin1' rather than `print.'
 ;;         Or, we can just remove the change-hook until after we sent the
 ;;         aforementioned \n.
@@ -612,18 +612,14 @@ Can be called in a process buffer at any time."
   (if (eq (char-before) ?\n)
       (el-job--handle-output)))
 
-;; TODO: remove arg
-(defun el-job--handle-output (&optional dead-process)
+(defun el-job--handle-output ()
   "Handle output in current buffer.
 
 If this is the last output for the job, merge all outputs, maybe execute
 the callback function, finally maybe run the job again if there is now
-more input in the queue.
-
-Argument DEAD-PROCESS, if provided, should be the corresponding process
-object.  If nil, infer it from the buffer, if process is still alive."
+more input in the queue."
   (let* ((inhibit-quit t)
-         (proc (or dead-process (get-buffer-process (current-buffer))))
+         (proc (get-buffer-process (current-buffer)))
          (job el-job-here)
          finish-time
          durations
