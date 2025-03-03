@@ -318,7 +318,8 @@ with one character of your choosing, such as a dot."
                           inject-vars
                           inputs
                           funcall-per-input
-                          callback )
+                          callback
+                          &allow-other-keys )
   "Run FUNCALL-PER-INPUT in one or more headless Elisp processes.
 Then merge the return values \(lists of N lists) into one list
 \(of N lists) and pass it to CALLBACK.
