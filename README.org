@@ -40,7 +40,9 @@ A corollary: if you're testing this on Emacs 29 or below, you don't see this lib
 
 ** Limitations
 
-1. The return value from the =:funcall-per-input= function must always be a list with a fixed length, where the elements are themselves lists.  For example, see the return value at the end of [[https://github.com/meedstrom/org-node/blob/main/org-node-parser.el][org-node-parser.el]]:
+1. I *may or may not drop support for Emacs 28 and 29* in mid-2025, one month after the release after Debian trixie.  For something backwards-compatible, try [[https://github.com/jwiegley/emacs-async/][async.el]].
+
+2. The return value from the =:funcall-per-input= function must always be a list with a fixed length, where the elements are themselves lists.  For example, see the return value at the end of [[https://github.com/meedstrom/org-node/blob/main/org-node-parser.el][org-node-parser.el]]:
 
    #+begin_src elisp
    (list (if missing-file (list missing-file)) ; List of 1 item or nil
@@ -53,14 +55,8 @@ A corollary: if you're testing this on Emacs 29 or below, you don't see this lib
 
    May seem clunky to return lists of only one item, but you could consider it a minor expense in exchange for simpler library code.
 
-2. Some data types cannot be exchanged with the children: those whose printed form look like =#<...>=.  For example, =#<buffer notes.org>=, =#<obarray n=94311>=, =#<marker at 3102 in README.org>=.
+3. Some data types cannot be exchanged with the children: those whose printed form look like =#<...>=.  For example, =#<buffer notes.org>=, =#<obarray n=94311>=, =#<marker at 3102 in README.org>=.
 
    To my knowledge, this sort of data usually has meaning only within the current process, so you would never want to do that anyway.
 
    In days past, hash tables also took that form, but not since Emacs 25 or so: their printed form looks like =#s(hash-table data ...)=, which works fine to send.
-
-3. Emacs versions 29 and below seem to incur a performance hit when using =:keepalive t=.  I may or may not have a solution in the works.
-
-4. Due to #3 and other reasons, I am *likely to drop support for Emacs 28* sometime mid-2025, one month after the release of Debian trixie.
-
-   Emacs 29 may *also* be dropped.
