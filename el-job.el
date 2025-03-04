@@ -19,7 +19,7 @@
 ;; URL:              https://github.com/meedstrom/el-job
 ;; Created:          2024-10-30
 ;; Keywords:         processes
-;; Package-Version:  1.0.5
+;; Package-Version:  1.1.0
 ;; Package-Requires: ((emacs "28.1") (compat "30"))
 
 ;;; Commentary:
