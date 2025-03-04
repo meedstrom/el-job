@@ -2,9 +2,13 @@
 # are permitted in any medium without royalty provided the copyright
 # notice and this notice are preserved.  This file is offered as-is,
 # without any warranty.
-#+HTML: <a href="https://melpa.org/#/el-job"><img alt="MELPA" src="https://melpa.org/packages/el-job-badge.svg"/></a> <a href="https://stable.melpa.org/#/el-job"><img alt="MELPA Stable" src="https://stable.melpa.org/packages/el-job-badge.svg"/></a>
-
+#+BEGIN_HTML
+<a href="https://repology.org/project/emacs%3Ael-job/versions">
+    <img src="https://repology.org/badge/vertical-allrepos/emacs%3Ael-job.svg" alt="Packaging status">
+</a>
+#+END_HTML
 * el-job
+
 Imagine you have a function you'd like to run on a long list of inputs.  You could run =(mapcar #'FN INPUTS)=, but that hangs Emacs until done.
 
 This library is a tool to run the same function in many subprocesses (one per CPU core), each with their own split of the =INPUTS= list, then merge their outputs and pass it back to the current Emacs.
