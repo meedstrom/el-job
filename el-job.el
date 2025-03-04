@@ -406,26 +406,9 @@ still at work.  IF-BUSY may take on one of three symbols:
 - `wait' \(default): append the inputs to a queue, to be handled
                      after all children are ready
 - `noop': do nothing, drop inputs
-- `takeover': kill and restart with the new inputs
-
-Transitional argument DEPRECATED-ARGS handles old calling conventions."
-  ;; Big crop of v1.0 changes.  Ugly, remove in April.
-  (when (plist-get deprecated-args :skip-benchmark)
-    (message "el-job-launch: Obsolete argument :skip-benchmark does nothing"))
-  (when (plist-get deprecated-args :eval-once)
-    (message "el-job-launch: Obsolete argument :eval-once does nothing"))
-  (when (plist-get deprecated-args :method)
-    (message "el-job-launch: Obsolete argument :method does nothing"))
-  (when-let* ((wrapup (plist-get deprecated-args :wrapup)))
-    (message "el-job-launch: Obsolete argument :wrapup now named :callback")
-    (setq callback wrapup))
-  (when-let* ((load (plist-get deprecated-args :load)))
-    (message "el-job-launch: Obsolete argument :load now named :load-features")
-    (setq load-features (ensure-list load)))
-  (when-let* ((funcall (plist-get deprecated-args :funcall)))
-    (message "el-job-launch: Obsolete argument :funcall now named :funcall-per-input")
-    (setq funcall-per-input funcall))
-  (unless (and (symbolp funcall-per-input) (functionp funcall-per-input))
+- `takeover': kill and restart with the new inputs"
+  (unless (and (symbolp funcall-per-input)
+               (functionp funcall-per-input))
     (error "Argument FUNCALL-PER-INPUT must be a symbol with a function definition"))
   (when callback
     (unless (and (symbolp callback) (functionp callback))
@@ -657,9 +640,7 @@ more input in the queue."
         ;; Extra actions when this was the last output
         (when (null .busy)
           (let ((last-done (car (last (sort .finish-times #'time-less-p)))))
-            (plist-put .timestamps :children-done last-done) ;; DEPRECATED
             (plist-put .timestamps :work-done last-done))
-          (plist-put .timestamps :got-all-results (current-time)) ;; DEPRECATED
           (plist-put .timestamps :callback-begun (current-time))
           ;; Finally the purpose of it all.
           ;; Somehow, it took 700 lines of code to get here.
