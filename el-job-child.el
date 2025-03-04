@@ -31,8 +31,7 @@ META-LIST1 and META-LIST2 must be lists of identical length,
 and each element in them must be a list or nil."
   (let (merged)
     (while meta-list1
-      (push (nconc (pop meta-list1) (pop meta-list2))
-            merged))
+      (push (nconc (pop meta-list1) (pop meta-list2)) merged))
     (when meta-list2 (error "Lists differed in length"))
     (nreverse merged)))
 
@@ -69,18 +68,17 @@ add that information to the final return value."
               (setq start (current-time))
               (setq output (funcall func item))
               (push (time-since start) metadata)
-              ;; REVIEW: `el-job-child--zip' could take nonzero time, not sure
-              ;; if it should be included in the benchmark.  If yes, move this
-              ;; up to above the line that has `time-since'.  Reason not is
-              ;; maybe runtime changes the longer the `results' gets, and then
-              ;; that is not a good benchmark of `item'.
+              ;; REVIEW: Not sure if `el-job-child--zip' should be included in
+              ;; the benchmark.  If yes, move this up to above the line that
+              ;; has `time-since'.  Reason not is if it takes longer as
+              ;; `results' gets longer, then that is not a good benchmark of
+              ;; `item'.  Someone with more Lisp-fu could tell me.
               (setq results (el-job-child--zip output results)))
           (funcall func)) ;; ??
         ;; Ensure durations are in same order that ITEMS came in, letting us
         ;; associate which with which just by index.
         (setq metadata (nreverse metadata))
-        ;; Timestamp the finish-time.  Note that makes the `car' of the
-        ;; metadata qualitatively different.
+        ;; Timestamp the finish-time.
         (push (current-time) metadata)
         (let ((print-length nil)
               (print-level nil)
