@@ -619,7 +619,7 @@ more input in the queue."
        (dolist (proc (append (el-job:busy job)
                              (el-job:ready job)))
          (el-job--unhide-buffer (process-buffer proc))
-         (el-job--kill-quietly proc))
+         (delete-process proc))
        (error "In buffer %s: problems reading child output: %S"
               (current-buffer) err)))
     (when results
@@ -664,19 +664,11 @@ same ID still has the benchmarks table and possibly queued input."
     (let ((preserve (and .id (> el-job--debug-level 0))))
       (dolist (proc (append .busy .ready))
         (let ((buf (process-buffer proc)))
-          (el-job--kill-quietly proc)
+          (delete-process proc)
           (and (buffer-live-p buf) (not preserve) (kill-buffer buf))))
       (setf .busy nil)
       (setf .ready nil)
       (and (buffer-live-p .stderr) (not preserve) (kill-buffer .stderr)))))
-
-;; TODO Maybe now we can use only `delete-process' since sentinel is always
-;;      ignore.
-(defun el-job--kill-quietly (proc)
-  "Kill PROC while disabling its sentinel and filter."
-  (set-process-filter proc #'ignore)
-  (set-process-sentinel proc #'ignore)
-  (delete-process proc))
 
 (defun el-job--unhide-buffer (buffer)
   "Rename BUFFER to omit initial space, and return the new name."
