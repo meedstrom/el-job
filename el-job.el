@@ -37,6 +37,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'subr-x) ;; for emacs 28
 (require 'compat)
 (require 'el-job-child)
 
