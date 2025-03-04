@@ -687,16 +687,15 @@ same ID still has the benchmarks table and possibly queued input."
 ;;; Tools / public API
 
 (defun el-job-show-info ()
-  "Prompt for a job and show its metadata in a new buffer."
+  "Prompt for a job and show its data in a new buffer."
   (interactive)
-  (let* ((id (intern (completing-read "Get info on job: " el-jobs)))
-         (job (gethash id el-jobs)))
-    (when job
-      (switch-to-buffer (get-buffer-create "*el-job*" t))
-      (erase-buffer)
-      (cl-prin1 job (current-buffer))
-      ;; Never print the above into echo area
-      t)))
+  (when-let* ((id (intern (completing-read "Get info on job: " el-jobs)))
+              (job (gethash id el-jobs)))
+    (set-buffer (get-buffer-create "*el-job debug info*" t))
+    (erase-buffer)
+    (so-long-mode)
+    (cl-prin1 job (current-buffer))
+    (switch-to-buffer (current-buffer))))
 
 (defun el-job-kill-all ()
   "Kill all el-jobs ever registered and forget metadata."
