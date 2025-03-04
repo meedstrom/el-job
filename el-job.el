@@ -518,7 +518,7 @@ For the rest of the arguments, see `el-job-launch'."
            (ident (or .id (number-to-string (abs (sxhash .spawn-args))))))
       (setf .stderr
             (with-current-buffer
-                (get-buffer-create (format " *el-job-%s:err*" .id) t)
+                (get-buffer-create (format " *el-job-%s:err*" ident) t)
               (setq-local el-job-here job)
               (erase-buffer)
               (current-buffer)))
