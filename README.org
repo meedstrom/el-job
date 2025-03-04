@@ -11,7 +11,7 @@
 
 Imagine you have a function you'd like to run on a long list of inputs.  You could run =(mapcar #'FN INPUTS)=, but that hangs Emacs until done.
 
-This library is a tool to run the same function in many subprocesses (one per CPU core), each with their own split of the =INPUTS= list, then merge their outputs and pass it back to the current Emacs.
+This library lets you run the same function in many subprocesses (one per CPU core), each with their own split of the =INPUTS= list, then merge their outputs and pass it back to the current Emacs.
 
 In the meantime, current Emacs does not hang at all.
 
@@ -25,16 +25,18 @@ I want to shorten the round-trip as much as possible, *between the start of an a
 For example, say you have some lisp that collects completion candidates, and you want to run it asynchronously because the lisp you wrote isn't always fast enough to avoid the user's notice, but you'd still like it to return as soon as possible.
 
 *** Processes stay alive
-In the above example, a user might not delay longer than 100 ms between opening the minibuffer and beginning to type, so there's scant room for overhead like spinning up subprocesses that load a bunch of libraries before getting to work.
+In the above example, a user might only delay a fraction of a second between opening the minibuffer and beginning to type, so there's scant room for overhead like spinning up subprocesses that load a bunch of libraries before getting to work.
 
-Thus el-job keeps idle subprocesses for up to 30 seconds after a job finishes, awaiting more input.
+Thus, el-job keeps idle subprocesses for up to 30 seconds after a job finishes, awaiting more input.
 
 An aesthetic drawback is cluttering your task manager with many processes named "emacs".
 
-Users who tend to run system commands such as =pkill emacs= may find that the command occasionally "does not work", because it actually killed an el-job subprocess instead of the Emacs they see on screen.
+Users who tend to run system commands such as =pkill emacs= may find that the command occasionally "does not work", because it actually killed an el-job subprocess, instead of the Emacs they see on screen.
 
 *** Emacs 30 =fast-read-process-output=
-Some other libraries, like the popular [[https://github.com/jwiegley/emacs-async/][async.el]], internally rely on a custom process filter.  Since Emacs 30, it's a good idea to use the built-in process filter when performance is critical, and thus that's what el-job does.
+Some other libraries, like the popular [[https://github.com/jwiegley/emacs-async/][async.el]], are designed around a custom process filter.
+
+Since Emacs 30, it's a good idea to instead use the /built-in/ process filter when performance is critical, and el-job does so.
 
 A corollary: if you're testing this on Emacs 29 or below, you don't see this library at its best performance.
 
@@ -42,23 +44,22 @@ A corollary: if you're testing this on Emacs 29 or below, you don't see this lib
 - No longer keeps processes alive forever.  All jobs are kept alive for up to 30 seconds of disuse, then reaped.
 - Pruned many code paths.
 - Many arguments changed, and a few were removed.  Consult the docstring of =el-job-launch= again.
-- Users of Emacs 29 and below may see a worsened performance in el-job v1.0 compared to v0.3; this is temporary and will be rectified.
 
 ** Limitations
 
-1. *May or may not drop support for Emacs 28 and 29* in mid-2025, one month after the [[https://release.debian.org/trixie/freeze_policy.html][release of Debian trixie]].  For a project with longer back-compat, try [[https://github.com/jwiegley/emacs-async/][async.el]].
+1. *May or may not drop support for Emacs 28 and 29* in mid-2025, one month after the [[https://release.debian.org/trixie/freeze_policy.html][the release of Debian trixie]].  For a library with longer back-compat, try [[https://github.com/jwiegley/emacs-async/][async.el]].
 
-2. The return value from the =:funcall-per-input= function must always be a list with a fixed length, where the elements are themselves lists.
+2. The return value from the =:funcall-per-input= function must always be a list with a fixed length, where the elements are also lists.
 
-   For example, org-node passes =:funcall-per-input #'org-node-parser--scan-file=, and this is the return value of [[https://github.com/meedstrom/org-node/blob/main/org-node-parser.el][org-node-parser--scan-file]]:
+   For example, org-node passes =:funcall-per-input #'org-node-parser--scan-file= to el-job, and if you look in [[https://github.com/meedstrom/org-node/blob/main/org-node-parser.el][org-node-parser.el]] for the defun of =org-node-parser--scan-file=, this is its final return value:
 
    #+begin_src elisp
-   (list (if missing-file (list missing-file)) ; List of 1 item or nil
-         (if file-mtime (list file-mtime))     ; List of 1 item or nil
-         found-nodes                           ; Always a list
-         org-node-parser--paths-types          ; Always a list
-         org-node-parser--found-links          ; Always a list
-         (if problem (list problem))))         ; List of 1 item or nil
+   (list (if missing-file (list missing-file)) ; List of 0 or 1 item
+         (if file-mtime (list file-mtime))     ; List of 0 or 1 item
+         found-nodes                           ; List of many items
+         org-node-parser--paths-types          ; List of many items
+         org-node-parser--found-links          ; List of many items
+         (if problem (list problem))))         ; List of 0 or 1 item
    #+end_src
 
    It may seem clunky to return lists of only one item, but you could consider it a minor expense in exchange for simpler library code.
