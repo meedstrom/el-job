@@ -19,7 +19,7 @@
 ;; URL:              https://github.com/meedstrom/el-job
 ;; Created:          2024-10-30
 ;; Keywords:         processes
-;; Package-Version:  1.0.4
+;; Package-Version:  1.0.1
 ;; Package-Requires: ((emacs "28.1") (compat "30"))
 
 ;;; Commentary:
@@ -558,13 +558,11 @@ This puts them to work.  Each successful child will print output
 should trigger `el-job--handle-output'."
   (el-job--with job
       ( .ready .busy .input-sets .result-sets .queued-inputs .cores-to-use
-        .past-elapsed .timestamps .finish-times .id .stderr .timeout .poll-timer )
+        .past-elapsed .timestamps .finish-times .id .stderr .timeout )
     (cancel-timer .timeout)
     (setf .result-sets nil)
     (setf .finish-times nil)
-    (let ((splits (el-job--split-optimally .queued-inputs
-                                           .cores-to-use
-                                           .past-elapsed)))
+    (let ((splits (el-job--split-optimally .queued-inputs .cores-to-use .past-elapsed)))
       (unless (length< splits (1+ (length .ready)))
         (error "Items split in %d lists, but only %d ready processes"
                (length splits) (length .ready)))
@@ -582,45 +580,13 @@ should trigger `el-job--handle-output'."
           (setf (alist-get proc .input-sets) items)
           (with-current-buffer (process-buffer proc)
             (erase-buffer)
-            ;; (remove-hook 'after-change-functions #'el-job--check-done t)
+            (remove-hook 'after-change-functions #'el-job--check-done t)
             (process-send-string proc (prin1-to-string items))
             (process-send-string proc "\n")
-            ;; (add-hook 'after-change-functions #'el-job--check-done nil t)
-            ))))
+            (add-hook 'after-change-functions #'el-job--check-done nil t)))))
     (setf .queued-inputs nil)
     (plist-put .timestamps :work-begun (current-time))
-    (setf .poll-timer (run-with-timer 0.05 nil #'el-job--poll 1 .busy))
-    ;; (setf .timeout (run-with-timer 30 nil #'el-job--timeout .stderr))
-    ))
-
-(defun el-job--poll (n bufs)
-  (let (busy-bufs)
-    (save-current-buffer
-      (dolist (buf bufs)
-        (if (not (buffer-live-p))
-            ;; May be intentionally done by an `el-job-disable' call,
-            ;; so not necessarily a problem.
-            (el-job--dbg 2 "Process buffer found killed: %s" buf)
-          (set-buffer buf)
-          (if (eq (char-before) ?\n)
-              (el-job--handle-output)
-            (push buf busy-bufs))))
-
-      ;; Eval to see the full series of timer delays:
-      ;; (--map (/ (float it) (ash 1 5)) (-iterate '1+ 1 42))
-      ;; Or the cumulative sums:
-      ;; (-reductions '+ (--map (/ (float it) (ash 1 5)) (-iterate '1+ 1 42)))
-      (if (and busy-bufs (<= n 42))
-          (setf (el-job:poll-timer el-job-here)
-                (run-with-timer
-                 (/ (float n) (ash 1 5)) nil #'el-job--poll (1+ n) busy-bufs))
-        (let ((desc (or (el-job:id el-job-here)
-                        (format "once-off job that calls %S"
-                                (car (last (el-job:spawn-args el-job-here)))))))
-          (el-job-disable el-job-here)
-          (if busy-bufs
-              (message "el-job: Timed out, was busy for 30+ seconds: %s" desc)
-            (el-job--dbg 2 "Reaped idle processes for %s" desc)))))))
+    (setf .timeout (run-with-timer 30 nil #'el-job--timeout .stderr))))
 
 (defun el-job--timeout (stderr-buf)
   "Disable job corresponding to STDERR-BUF, and print that it timed out.
@@ -670,7 +636,7 @@ more input in the queue."
        (dolist (proc (append (el-job:busy job)
                              (el-job:ready job)))
          (el-job--unhide-buffer (process-buffer proc))
-         (delete-process proc))
+         (el-job--kill-quietly proc))
        (error "In buffer %s: problems reading child output: %S"
               (current-buffer) err)))
     (when results
@@ -712,17 +678,24 @@ more input in the queue."
 
 This does not deregister the job ID.  That means the next launch with
 same ID still has the benchmarks table and possibly queued input."
-  (el-job--with job (.id .timeout .busy .ready .stderr .poll-timer)
-    (cancel-timer .timeout)  (el-job.timeout job)
-    (cancel-timer .poll-timer)
+  (el-job--with job (.id .timeout .busy .ready .stderr)
+    (cancel-timer .timeout)
     (let ((preserve (and .id (> el-job--debug-level 0))))
       (dolist (proc (append .busy .ready))
         (let ((buf (process-buffer proc)))
-          (delete-process proc)
+          (el-job--kill-quietly proc)
           (and (buffer-live-p buf) (not preserve) (kill-buffer buf))))
       (setf .busy nil)
       (setf .ready nil)
       (and (buffer-live-p .stderr) (not preserve) (kill-buffer .stderr)))))
+
+;; TODO Maybe now we can use only `delete-process' since sentinel is always
+;;      ignore.
+(defun el-job--kill-quietly (proc)
+  "Kill PROC while disabling its sentinel and filter."
+  (set-process-filter proc #'ignore)
+  (set-process-sentinel proc #'ignore)
+  (delete-process proc))
 
 (defun el-job--unhide-buffer (buffer)
   "Rename BUFFER to omit initial space, and return the new name."
