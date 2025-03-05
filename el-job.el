@@ -422,7 +422,8 @@ still at work.  IF-BUSY may take on one of three symbols:
           (setq do-exec t))
         (when do-exec
           (setf .callback callback)
-          (unless (seq-every-p #'process-live-p .ready)
+          (unless (and (not (null .ready))
+                       (seq-every-p #'process-live-p .ready))
             (setq do-respawn t))
           (let ((new-spawn-args (list job
                                       load-features
