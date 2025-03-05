@@ -36,8 +36,9 @@
 
 ;;; Code:
 
+(when (<= emacs-major-version 28)
+  (require 'subr-x))
 (require 'cl-lib)
-(require 'subr-x) ;; for emacs 28
 (require 'compat)
 (require 'el-job-child)
 
@@ -377,11 +378,6 @@ ID is a symbol identifying this job.  It has several purposes:
 - Allow repeated calls on the same inputs to optimize how those inputs
   are split, thanks to benchmarks from previous calls.
 
-- When there is both a non-nil ID and the value of `el-job--debug-level'
-  is nonzero, the associated process buffers stick around after death
-  and can be inspected.  Seek buffer names that start with \" *el-job-\"
-  \(note leading space).
-
 
 IF-BUSY comes into effect when the previous launch with the same ID is
 still at work.  IF-BUSY may take on one of three symbols:
@@ -389,7 +385,12 @@ still at work.  IF-BUSY may take on one of three symbols:
 - `wait' \(default): append the inputs to a queue, to be handled
                      after all children are ready
 - `noop': do nothing, drop inputs
-- `takeover': kill and restart with the new inputs"
+- `takeover': kill and restart with the new inputs
+
+For debugging, see these commands:
+- `el-job-cycle-debug-level'
+- `el-job-show-info'
+- `el-job-kill-all'"
   (unless (and (symbolp funcall-per-input)
                (functionp funcall-per-input))
     (error "Argument FUNCALL-PER-INPUT must be a symbol with a function definition"))
@@ -557,7 +558,7 @@ should trigger `el-job--handle-output'."
 ;; but spread out the last 7 polls between T-minus-20s and T-minus-30s.
 
 (defun el-job--poll (n bufs)
-  (let (busy-bufs id)
+  (let (busy-bufs)
     (save-current-buffer
       (dolist (buf bufs)
         (if (not (buffer-live-p buf))
