@@ -47,7 +47,9 @@ FUNC comes from the :funcall argument of `el-job-launch'.
 
 Benchmark how long FUNC took to handle each item, and
 add that information to the final return value."
-  ;; Receive injection
+  ;; Use `read-minibuffer' to receive what we got via `process-send-string'
+  ;; from parent.  Could also use just `read', but that prints an unnecessary
+  ;; "Lisp expression: " into parent's process buffer it'd have to clean up.
   (let ((vars (read-minibuffer ""))
         (libs (read-minibuffer "")))
     (dolist (var vars)
@@ -57,11 +59,11 @@ add that information to the final return value."
   ;; Begin infinite loop, treating each further input from parent as a list of
   ;; things to map to FUNC.
   (catch 'die
-    (while-let ((input (read-minibuffer "")))
-      (when (eq input 'die)
-        (throw 'die nil))
-      (let ((current-time-list nil) ;; Fewer cons cells
-            item start output metadata results)
+    (let ((current-time-list nil) ;; Fewer cons cells
+          input item start output metadata results)
+      (while (setq input (read-minibuffer ""))
+        (when (eq input 'die)
+          (throw 'die nil))
         (if input
             (while input
               (setq item (pop input))
@@ -74,7 +76,7 @@ add that information to the final return value."
               ;; `results' gets longer, then that is not a good benchmark of
               ;; `item'.  Someone with more Lisp-fu could tell me.
               (setq results (el-job-child--zip output results)))
-          (funcall func)) ;; ??
+          (funcall func)) ;; Job with no inputs.
         ;; Ensure durations are in same order that ITEMS came in, letting us
         ;; associate which with which just by index.
         (setq metadata (nreverse metadata))

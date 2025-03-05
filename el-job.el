@@ -203,8 +203,9 @@ being saddled with a huge item in addition to the average workload."
       (el-job--split-evenly items n-cores))
      ((progn
         (dolist (item items)
-          (when-let* ((dur (gethash item benchmarks)))
-            (setq total-duration (time-add total-duration dur))))
+          (let ((dur (gethash item benchmarks)))
+            (when dur
+              (setq total-duration (time-add total-duration dur)))))
         (eq total-duration 0))
       ;; Probably a first-time run
       (el-job--split-evenly items n-cores))
@@ -214,9 +215,10 @@ being saddled with a huge item in addition to the average workload."
             this-sublist
             sublists
             untimed
-            dur)
+            dur
+            item)
         (catch 'filled
-          (while-let ((item (pop items)))
+          (while (setq item (pop items))
             (if (length= sublists n-cores)
                 (progn (push item items)
                        (throw 'filled t))
@@ -271,7 +273,7 @@ Cf. `with-slots' in the eieio library, or `let-alist'.
 
 For clarity inside BODY, each symbol name in SLOTS must be prepended
 with one character of your choosing, such as a dot."
-  (declare (indent 2) (debug ((&rest (symbolp sexp)))))
+  (declare (indent 2))
   `(cl-symbol-macrolet
        ,(cl-loop
          for slot in slots
@@ -525,16 +527,17 @@ should trigger `el-job--handle-output'."
             (print-symbols-bare t)
             (print-escape-newlines t)
             items proc)
-        (while splits
-          (setq items (pop splits))
-          (setq proc (pop .ready))
-          (push proc .busy)
-          (push (process-buffer proc) busy-bufs)
-          (setf (alist-get proc .input-sets) items)
-          (with-current-buffer (process-buffer proc)
-            (erase-buffer)
-            (process-send-string proc (prin1-to-string items))
-            (process-send-string proc "\n"))))
+        (while (progn
+                 (setq items (pop splits))
+                 (setq proc (pop .ready))
+                 (push proc .busy)
+                 (push (process-buffer proc) busy-bufs)
+                 (setf (alist-get proc .input-sets) items)
+                 (with-current-buffer (process-buffer proc)
+                   (erase-buffer)
+                   (process-send-string proc (prin1-to-string items))
+                   (process-send-string proc "\n"))
+                 splits)))
       (setf .queued-inputs nil)
       (plist-put .timestamps :work-begun (current-time))
       (setf .poll-timer (run-with-timer .02 nil #'el-job--poll 1 busy-bufs)))))
@@ -557,6 +560,7 @@ should trigger `el-job--handle-output'."
 ;; but spread out the last 7 polls between T-minus-20s and T-minus-30s.
 
 (defun el-job--poll (n bufs)
+  (cl-assert (not (null bufs)))
   (let (busy-bufs id)
     (save-current-buffer
       (dolist (buf bufs)
@@ -566,15 +570,16 @@ should trigger `el-job--handle-output'."
           (if (eq (char-before) ?\n)
               (el-job--handle-output)
             (push buf busy-bufs))))
-      (if (and busy-bufs (<= n 42))
-          (setf (el-job:poll-timer el-job-here)
-                (run-with-timer
-                 (/ n (float (ash 1 5))) nil #'el-job--poll (1+ n) busy-bufs))
-        (setq id (el-job:id el-job-here))
-        (el-job--disable el-job-here)
-        (if busy-bufs
-            (message "el-job: Timed out, was busy for 30+ seconds: %s" id)
-          (el-job--dbg 2 "Reaped idle processes for %s" id))))))
+      (when bufs
+        (if (and busy-bufs (<= n 42))
+            (setf (el-job:poll-timer el-job-here)
+                  (run-with-timer
+                   (/ n (float (ash 1 5))) nil #'el-job--poll (1+ n) busy-bufs))
+          (setq id (el-job:id el-job-here))
+          (el-job--disable el-job-here)
+          (if busy-bufs
+              (message "el-job: Timed out, was busy for 30+ seconds: %s" id)
+            (el-job--dbg 2 "Reaped idle processes for %s" id)))))))
 
 (defun el-job--handle-output ()
   "Handle output in current buffer.
@@ -660,14 +665,15 @@ same ID still has the benchmarks table and possibly queued input."
 Tip: alternatively, you can preserve the process buffers for inspection.
 Use \\[el-job-cycle-debug-level] and they are not killed from then on."
   (interactive)
-  (when-let* ((id (intern (completing-read "Get info on job: " el-jobs)))
-              (job (gethash id el-jobs)))
-    (set-buffer (get-buffer-create "*el-job debug info*" t))
-    (so-long-mode)
-    (let ((inhibit-read-only t))
-      (erase-buffer)
-      (prin1 job (current-buffer)))
-    (switch-to-buffer (current-buffer))))
+  (let* ((id (intern (completing-read "Get info on job: " el-jobs)))
+         (job (gethash id el-jobs)))
+    (when job
+      (set-buffer (get-buffer-create "*el-job debug info*" t))
+      (so-long-mode)
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (prin1 job (current-buffer)))
+      (switch-to-buffer (current-buffer)))))
 
 (defun el-job-kill-all ()
   "Kill all el-jobs ever registered and forget metadata."
@@ -697,8 +703,8 @@ Meanwhile, ensure string MESSAGE is visible in the minibuffer."
 (defun el-job-is-busy (id)
   "Return list of busy processes for job ID, if any.
 Safely return nil otherwise, whether or not ID is known."
-  (when-let* ((job (gethash id el-jobs)))
-    (el-job:busy job)))
+  (let ((job (gethash id el-jobs)))
+    (and job (el-job:busy job))))
 
 (provide 'el-job)
 
