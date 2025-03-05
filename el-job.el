@@ -421,7 +421,7 @@ still at work.  IF-BUSY may take on one of three symbols:
                                  load-features
                                  inject-vars
                                  funcall-per-input)
-        (el-job--exec-pending-workload anonymous-job))
+        (el-job--exec-workload anonymous-job))
     (let ((job (or (gethash id el-jobs)
                    (puthash id (el-job--make :id id) el-jobs)))
           (do-respawn nil)
@@ -458,7 +458,7 @@ still at work.  IF-BUSY may take on one of three symbols:
             (when do-respawn
               (el-job--disable job)
               (apply #'el-job--spawn-processes .spawn-args))
-            (el-job--exec-pending-workload job)))))))
+            (el-job--exec-workload job)))))))
 
 (defvar-local el-job-here nil)
 (defun el-job--spawn-processes (job load-features inject-vars funcall-per-input)
@@ -521,7 +521,7 @@ For the rest of the arguments, see `el-job-launch'."
          (el-job--disable job)
          (el-job--dbg 1 "el-job: Terminated job because of: %S" err))))))
 
-(defun el-job--exec-pending-workload (job)
+(defun el-job--exec-workload (job)
   "Split the queued inputs in JOB and pass to all children.
 
 This puts them to work.  Each successful child will print output
@@ -564,13 +564,22 @@ should trigger `el-job--handle-output'."
 ;; Polling: simplistic but reliable.
 
 ;; Had the clever idea to add a hook to `after-change-functions' in each
-;; process buffer to simply check (eq (char-before) ?\n) as output came in.
+;; process buffer, that checks (eq (char-before) ?\n).  Perf was good on my
+;; machine...on Emacs 30, bad on 29.  Plus it just seems the kinda design that
+;; invites variance from machine to machine.
 
-;; Perf was good on my machine...on Emacs 30, bad on 29.  And it just seems
-;; like the kinda design that invites wild variance from machine to machine.
+;; So, poll.  We do a chain of timers that successively ups the delay.
+;; To see what the delays would be, eval:
+;; (--map (/ it (float (ash 1 5))) (-iterate '1+ 1 42))
+
+;; And to see the cumulative sums:
+;; (-reductions '+ (--map (/ it (float (ash 1 5))) (-iterate '1+ 1 42)))
+
+;; As you can see, we do 7 polls inside the first second,
+;; but spread out the last 7 polls between T-minus-20s and T-minus-30s.
 
 (defun el-job--poll (n bufs)
-  (let (busy-bufs)
+  (let (busy-bufs id)
     (save-current-buffer
       (dolist (buf bufs)
         (if (not (buffer-live-p buf))
@@ -579,26 +588,16 @@ should trigger `el-job--handle-output'."
           (if (eq (char-before) ?\n)
               (el-job--handle-output)
             (push buf busy-bufs))))
-
-      ;; We do a chain of timers that successively ups the delay.
-      ;; To see what the delays would be, eval:
-      ;; (--map (/ (float it) (ash 1 5)) (-iterate '1+ 1 42))
-
-      ;; And to see the cumulative sums:
-      ;; (-reductions '+ (--map (/ (float it) (ash 1 5)) (-iterate '1+ 1 42)))
-      ;; As you can see, we do 7 polls inside the first second,
-      ;; but spread the last 7 polls between T-minus-20s and T-minus-30s.
       (if (and busy-bufs (<= n 42))
           (setf (el-job:poll-timer el-job-here)
                 (run-with-timer
-                 (/ (float n) (ash 1 5)) nil #'el-job--poll (1+ n) busy-bufs))
-        (let ((desc (or (el-job:id el-job-here)
-                        (format "once-off job that calls %S"
-                                (car (last (el-job:spawn-args el-job-here)))))))
-          (el-job--disable el-job-here)
-          (if busy-bufs
-              (message "el-job: Timed out, was busy for 30+ seconds: %s" desc)
-            (el-job--dbg 2 "Reaped idle processes for %s" desc)))))))
+                 (/ n (float (ash 1 5))) nil #'el-job--poll (1+ n) busy-bufs))
+        (el-job--disable el-job-here)
+        (if busy-bufs
+            (message "el-job: Timed out, was busy for 30+ seconds: %s"
+                     (el-job:id el-job-here))
+          (el-job--dbg 2 "Reaped idle processes for %s"
+            (el-job:id el-job-here)))))))
 
 (defun el-job--handle-output ()
   "Handle output in current buffer.
@@ -650,7 +649,7 @@ more input in the queue."
             (funcall .callback .merged-results job))
           (if .id
               (when .queued-inputs
-                (el-job--exec-pending-workload job))
+                (el-job--exec-workload job))
             ;; Always clean up process buffers of anonymous job
             (el-job--disable job)))))))
 
