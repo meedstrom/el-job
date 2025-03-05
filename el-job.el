@@ -36,8 +36,6 @@
 
 ;;; Code:
 
-;; TODO: Maybe get rid of anonymous jobs
-
 (require 'cl-lib)
 (require 'subr-x) ;; for emacs 28
 (require 'compat)
@@ -381,8 +379,7 @@ which you can get from this form:
     \(el-job:timestamps JOB)
 
 
-ID is a symbol identifying this job.
-A non-nil ID has several purposes:
+ID is a symbol identifying this job.  It has several purposes:
 
 - Prevent launching the same job twice, if the last invocation is not
   done yet.  Argument IF-BUSY regulates what happens instead.
@@ -412,53 +409,44 @@ still at work.  IF-BUSY may take on one of three symbols:
       (error "Argument CALLBACK must be a symbol with a function definition")))
   (unless (proper-list-p load-features)
     (error "Argument LOAD-FEATURES must be a list"))
-  (if (null id)
-      (let* ((inputs (if (functionp inputs) (funcall inputs) inputs))
-             (anonymous-job
-              (el-job--make :callback callback
-                            :queued-inputs inputs)))
-        (el-job--spawn-processes anonymous-job
-                                 load-features
-                                 inject-vars
-                                 funcall-per-input)
-        (el-job--exec-workload anonymous-job))
-    (let ((job (or (gethash id el-jobs)
-                   (puthash id (el-job--make :id id) el-jobs)))
-          (do-respawn nil)
-          (do-exec nil))
-      (el-job--with job ( .queued-inputs .busy .ready
-                          .spawn-args .callback .timestamps )
-        (unless (and .busy (eq if-busy 'noop))
-          (plist-put .timestamps :launched (current-time))
-          ;; TODO: Can we somehow defer this to even later?
-          ;; Maybe if 'wait, don't funcall.
-          (when (functionp inputs)
-            (setq inputs (funcall inputs)))
-          (if .busy
-              (pcase if-busy
-                ('takeover (setq do-respawn t)
-                           (setq do-exec t)
-                           (setf .queued-inputs inputs))
-                ('wait (setf .queued-inputs (append inputs .queued-inputs))))
-            (setf .queued-inputs inputs)
-            (setq do-exec t))
-          (when do-exec
-            (setf .callback callback)
-            (unless (seq-every-p #'process-live-p .ready)
-              (setq do-respawn t))
-            (let ((new-spawn-args (list job
-                                        load-features
-                                        inject-vars
-                                        funcall-per-input)))
-              (unless (= (sxhash (cdr .spawn-args))
-                         (sxhash (cdr new-spawn-args)))
-                (setf .spawn-args new-spawn-args)
-                (el-job--dbg 2 "New arguments, resetting processes for %s" id)
-                (setq do-respawn t)))
-            (when do-respawn
-              (el-job--disable job)
-              (apply #'el-job--spawn-processes .spawn-args))
-            (el-job--exec-workload job)))))))
+  (unless id (error "Argument ID now mandatory"))
+  (let ((job (or (gethash id el-jobs)
+                 (puthash id (el-job--make :id id) el-jobs)))
+        (do-respawn nil)
+        (do-exec nil))
+    (el-job--with job ( .queued-inputs .busy .ready
+                        .spawn-args .callback .timestamps )
+      (unless (and .busy (eq if-busy 'noop))
+        (plist-put .timestamps :launched (current-time))
+        ;; TODO: Can we somehow defer this to even later?
+        ;;       Maybe if-busy=wait means don't funcall?
+        (when (functionp inputs)
+          (setq inputs (funcall inputs)))
+        (if .busy
+            (pcase if-busy
+              ('takeover (setq do-respawn t)
+                         (setq do-exec t)
+                         (setf .queued-inputs inputs))
+              ('wait (setf .queued-inputs (append inputs .queued-inputs))))
+          (setf .queued-inputs inputs)
+          (setq do-exec t))
+        (when do-exec
+          (setf .callback callback)
+          (unless (seq-every-p #'process-live-p .ready)
+            (setq do-respawn t))
+          (let ((new-spawn-args (list job
+                                      load-features
+                                      inject-vars
+                                      funcall-per-input)))
+            (unless (= (sxhash (cdr .spawn-args))
+                       (sxhash (cdr new-spawn-args)))
+              (setf .spawn-args new-spawn-args)
+              (el-job--dbg 2 "New arguments, resetting processes for %s" id)
+              (setq do-respawn t)))
+          (when do-respawn
+            (el-job--disable job)
+            (apply #'el-job--spawn-processes .spawn-args))
+          (el-job--exec-workload job))))))
 
 (defvar-local el-job-here nil)
 (defun el-job--spawn-processes (job load-features inject-vars funcall-per-input)
@@ -486,25 +474,24 @@ For the rest of the arguments, see `el-job-launch'."
              "--load" (el-job--ensure-compiled-lib 'el-job-child)
              "--eval" (format "(el-job-child--work #'%S)" funcall-per-input)))
            ;; Ensure the working directory is not remote (it messes things up)
-           (default-directory invocation-directory)
-           (ident (or .id (number-to-string (abs (sxhash .spawn-args))))))
+           (default-directory invocation-directory))
       (setf .stderr
             (with-current-buffer
-                (get-buffer-create (format " *el-job-%s:err*" ident) t)
+                (get-buffer-create (format " *el-job:%s:err*" .id) t)
               (setq-local el-job-here job)
               (erase-buffer)
               (current-buffer)))
       (condition-case err
           (dotimes (i (max 1 (1- (num-processors))))
             (let ((proc (make-process
-                         :name (format "el-job:%s:%d" ident i)
+                         :name (format "el-job:%s:%d" .id i)
                          :noquery t
                          :connection-type 'pipe
                          ;; https://github.com/jwiegley/emacs-async/issues/165
                          :coding 'utf-8-emacs-unix
                          :stderr .stderr
                          :buffer (get-buffer-create
-                                  (format " *el-job-%s:%d*" ident i) t)
+                                  (format " *el-job:%s:%d*" .id i) t)
                          :command command
                          :sentinel #'ignore)))
               (when (string-suffix-p ">" (process-name proc))
@@ -647,11 +634,8 @@ more input in the queue."
           (setf .merged-results (el-job--zip-all .result-sets))
           (when .callback
             (funcall .callback .merged-results job))
-          (if .id
-              (when .queued-inputs
-                (el-job--exec-workload job))
-            ;; Always clean up process buffers of anonymous job
-            (el-job--disable job)))))))
+          (when .queued-inputs
+            (el-job--exec-workload job)))))))
 
 (defun el-job--disable (job)
   "Kill processes in JOB and their process buffers.
@@ -660,7 +644,7 @@ This does not deregister the job ID.  That means the next launch with
 same ID still has the benchmarks table and possibly queued input."
   (el-job--with job (.id .busy .ready .stderr .poll-timer)
     (cancel-timer .poll-timer)
-    (let ((preserve (and .id (> el-job--debug-level 0))))
+    (let ((preserve (/= 0 el-job--debug-level)))
       (dolist (proc (append .busy .ready))
         (let ((buf (process-buffer proc)))
           (delete-process proc)
