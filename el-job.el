@@ -664,9 +664,10 @@ Use \\[el-job-cycle-debug-level] and they are not killed from then on."
   (when-let* ((id (intern (completing-read "Get info on job: " el-jobs)))
               (job (gethash id el-jobs)))
     (set-buffer (get-buffer-create "*el-job debug info*" t))
-    (erase-buffer)
     (so-long-mode)
-    (cl-prin1 job (current-buffer))
+    (let ((inhibit-read-only t))
+      (erase-buffer)
+      (prin1 job (current-buffer)))
     (switch-to-buffer (current-buffer))))
 
 (defun el-job-kill-all ()
