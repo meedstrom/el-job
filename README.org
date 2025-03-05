@@ -40,6 +40,10 @@ Since Emacs 30, it's a good idea to instead use the /built-in/ process filter wh
 
 A corollary: if you're testing this on Emacs 29 or below, you don't see this library at its best performance.
 
+** News 2.0.0
+- Jobs must now have :id (no more anonymous jobs)
+- Pruned many code paths.
+
 ** News 1.0.0
 - No longer keeps processes alive forever.  All jobs are kept alive for up to 30 seconds of disuse, then reaped.
 - Pruned many code paths.

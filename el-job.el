@@ -41,7 +41,7 @@
 (require 'compat)
 (require 'el-job-child)
 
-(defvar el-job-major-version 1
+(defvar el-job-major-version 2
   "Number incremented for breaking changes.")
 
 
@@ -238,18 +238,9 @@ being saddled with a huge item in addition to the average workload."
                     (setq this-sublist nil)
                     (push item items)))))))
         (if (length= sublists 0)
-            (progn
-              ;; Degrade gracefully
+            (progn ;; Degrade gracefully
               (fset 'el-job--split-optimally #'el-job--split-evenly)
-              (error "el-job: Unexpected code path, report appreciated! Data: %S"
-                     (list 'n-cores n-cores
-                           'total-duration total-duration
-                           'max-per-core max-per-core
-                           'this-sublist-sum this-sublist-sum
-                           'untimed untimed
-                           'items items
-                           'sublists sublists
-                           'this-sublist this-sublist)))
+              (cl-assert (not (length= sublists 0))))
           ;; Spread leftovers equally
           (let ((ctr 0)
                 (len (length sublists)))
@@ -296,8 +287,7 @@ with one character of your choosing, such as a dot."
   (ready nil :documentation "Processes ready for input.")
   (busy nil :documentation "Processes that have not yet returned output.")
   stderr
-  ;; Not an interesting timestamp, but list must start with something
-  ;; for `plist-put' to have an effect.
+  ;; Not an interesting timestamp, but `plist-put' needs a non-empty list.
   (timestamps (list :initial-job-creation (current-time)))
   (poll-timer (timer-create))
   finish-times
@@ -644,14 +634,13 @@ This does not deregister the job ID.  That means the next launch with
 same ID still has the benchmarks table and possibly queued input."
   (el-job--with job (.id .busy .ready .stderr .poll-timer)
     (cancel-timer .poll-timer)
-    (let ((preserve (/= 0 el-job--debug-level)))
-      (dolist (proc (append .busy .ready))
-        (let ((buf (process-buffer proc)))
-          (delete-process proc)
-          (and (buffer-live-p buf) (not preserve) (kill-buffer buf))))
-      (setf .busy nil)
-      (setf .ready nil)
-      (and (buffer-live-p .stderr) (not preserve) (kill-buffer .stderr)))))
+    (dolist (proc (append .busy .ready))
+      (let ((buf (process-buffer proc)))
+        (delete-process proc)
+        (when (= 0 el-job--debug-level) (kill-buffer buf))))
+    (when (= 0 el-job--debug-level) (kill-buffer .stderr))
+    (setf .busy nil)
+    (setf .ready nil)))
 
 (defun el-job--unhide-buffer (buffer)
   "Rename BUFFER to omit initial space, and return the new name."
@@ -661,8 +650,15 @@ same ID still has the benchmarks table and possibly queued input."
 
 ;;; Tools / public API
 
+(defun el-job-cycle-debug-level ()
+  (interactive)
+  (message "Variable `el-job--debug-level' set to %d"
+           (setq el-job--debug-level (% (1+ el-job--debug-level) 3))))
+
 (defun el-job-show-info ()
-  "Prompt for a job and show its data in a new buffer."
+  "Prompt for a job and show its data in a new buffer.
+Tip: alternatively, you can preserve the process buffers for inspection.
+Use \\[el-job-cycle-debug-level] and they are not killed from then on."
   (interactive)
   (when-let* ((id (intern (completing-read "Get info on job: " el-jobs)))
               (job (gethash id el-jobs)))
