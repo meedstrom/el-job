@@ -423,8 +423,7 @@ For debugging, see these commands:
           (setq do-exec t))
         (when do-exec
           (setf .callback callback)
-          (unless (and (not (null .ready))
-                       (seq-every-p #'process-live-p .ready))
+          (unless (and .ready (seq-every-p #'process-live-p .ready))
             (setq do-respawn t))
           (let ((new-spawn-args (list job
                                       load-features
@@ -558,7 +557,7 @@ should trigger `el-job--handle-output'."
 ;; but spread out the last 7 polls between T-minus-20s and T-minus-30s.
 
 (defun el-job--poll (n bufs)
-  (let (busy-bufs)
+  (let (busy-bufs id)
     (save-current-buffer
       (dolist (buf bufs)
         (if (not (buffer-live-p buf))
@@ -571,12 +570,11 @@ should trigger `el-job--handle-output'."
           (setf (el-job:poll-timer el-job-here)
                 (run-with-timer
                  (/ n (float (ash 1 5))) nil #'el-job--poll (1+ n) busy-bufs))
+        (setq id (el-job:id el-job-here))
         (el-job--disable el-job-here)
         (if busy-bufs
-            (message "el-job: Timed out, was busy for 30+ seconds: %s"
-                     (el-job:id el-job-here))
-          (el-job--dbg 2 "Reaped idle processes for %s"
-            (el-job:id el-job-here)))))))
+            (message "el-job: Timed out, was busy for 30+ seconds: %s" id)
+          (el-job--dbg 2 "Reaped idle processes for %s" id))))))
 
 (defun el-job--handle-output ()
   "Handle output in current buffer.
