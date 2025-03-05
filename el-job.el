@@ -294,7 +294,6 @@ with one character of your choosing, such as a dot."
                       (:copier nil)
                       (:conc-name el-job:))
   id
-  (cores-to-use 1)
   callback
   (ready nil :documentation "Processes ready for input.")
   (busy nil :documentation "Processes that have not yet returned output.")
@@ -416,9 +415,7 @@ still at work.  IF-BUSY may take on one of three symbols:
   (if (null id)
       (let* ((inputs (if (functionp inputs) (funcall inputs) inputs))
              (anonymous-job
-              (el-job--make :cores-to-use (min (length inputs)
-                                               (max 1 (1- (num-processors))))
-                            :callback callback
+              (el-job--make :callback callback
                             :queued-inputs inputs)))
         (el-job--spawn-processes anonymous-job
                                  load-features
@@ -429,11 +426,12 @@ still at work.  IF-BUSY may take on one of three symbols:
                    (puthash id (el-job--make :id id) el-jobs)))
           (do-respawn nil)
           (do-exec nil))
-      (el-job--with job ( .queued-inputs .busy .ready .cores-to-use
+      (el-job--with job ( .queued-inputs .busy .ready
                           .spawn-args .callback .timestamps )
         (unless (and .busy (eq if-busy 'noop))
           (plist-put .timestamps :launched (current-time))
           ;; TODO: Can we somehow defer this to even later?
+          ;; Maybe if 'wait, don't funcall.
           (when (functionp inputs)
             (setq inputs (funcall inputs)))
           (if .busy
@@ -446,38 +444,27 @@ still at work.  IF-BUSY may take on one of three symbols:
             (setq do-exec t))
           (when do-exec
             (setf .callback callback)
-            (setf .cores-to-use
-                  ;; FIXME: What if length of inputs has shrunk?
-                  ;; what happens when it list of 3 inputs is split by 7 cores?
-                  ;; If we decide we dont need to remember the N of cores from before,
-                  ;; taking the N of ready processes as good so long as it's not less than inputs,
-                  ;; then we could remove the .cores-to-use field.
-                  (min (max .cores-to-use (length .queued-inputs))
-                       (max 1 (1- (num-processors)))))
-            (unless (and (= .cores-to-use (+ (length .busy) (length .ready)))
-                         (seq-every-p #'process-live-p .ready)
-                         (seq-every-p #'process-live-p .busy)) ; uhh
+            (unless (seq-every-p #'process-live-p .ready)
               (setq do-respawn t))
             (let ((new-spawn-args (list job
                                         load-features
                                         inject-vars
                                         funcall-per-input)))
-              (unless (eq (sxhash (cdr .spawn-args))
-                          (sxhash (cdr new-spawn-args)))
+              (unless (= (sxhash (cdr .spawn-args))
+                         (sxhash (cdr new-spawn-args)))
                 (setf .spawn-args new-spawn-args)
                 (el-job--dbg 2 "New arguments, resetting processes for %s" id)
                 (setq do-respawn t)))
             (when do-respawn
               (el-job--disable job)
               (apply #'el-job--spawn-processes .spawn-args))
-            (el-job--exec-pending-workload job)
-            t))))))
+            (el-job--exec-pending-workload job)))))))
 
 (defvar-local el-job-here nil)
 (defun el-job--spawn-processes (job load-features inject-vars funcall-per-input)
   "Spin up processes for JOB, standing by for input.
 For the rest of the arguments, see `el-job-launch'."
-  (el-job--with job (.stderr .id .cores-to-use .ready .spawn-args)
+  (el-job--with job (.stderr .id .ready .spawn-args)
     (let* ((print-length nil)
            (print-level nil)
            (print-circle t)
@@ -508,7 +495,7 @@ For the rest of the arguments, see `el-job-launch'."
               (erase-buffer)
               (current-buffer)))
       (condition-case err
-          (dotimes (i .cores-to-use)
+          (dotimes (i (max 1 (1- (num-processors))))
             (let ((proc (make-process
                          :name (format "el-job:%s:%d" ident i)
                          :noquery t
@@ -541,14 +528,14 @@ This puts them to work.  Each successful child will print output
 \(even nil output) to its associated process buffer, whereupon something
 should trigger `el-job--handle-output'."
   (el-job--with job
-      ( .ready .busy .input-sets .result-sets .queued-inputs .cores-to-use
+      ( .ready .busy .input-sets .result-sets .queued-inputs
         .past-elapsed .timestamps .finish-times .id .stderr .poll-timer )
     (cancel-timer .poll-timer)
     (setf .input-sets nil)
     (setf .result-sets nil)
     (setf .finish-times nil)
     (let ((splits (el-job--split-optimally .queued-inputs
-                                           .cores-to-use
+                                           (max 1 (1- (num-processors)))
                                            .past-elapsed))
           busy-bufs)
       (unless (length< splits (1+ (length .ready)))
