@@ -21,8 +21,6 @@
 
 ;;; Code:
 
-(when (= emacs-major-version 28) (require 'subr-x))
-
 (defun el-job-child--zip (meta-list1 meta-list2)
   "Destructively zip two lists into one.
 Like the Dash expression \(-zip-with #\\='nconc list1 list2).

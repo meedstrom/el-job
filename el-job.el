@@ -20,7 +20,7 @@
 ;; Created:          2024-10-30
 ;; Keywords:         processes
 ;; Package-Version:  2.0.1
-;; Package-Requires: ((emacs "28.1") (compat "30"))
+;; Package-Requires: ((emacs "29.1"))
 
 ;;; Commentary:
 
@@ -36,10 +36,7 @@
 
 ;;; Code:
 
-(when (<= emacs-major-version 28)
-  (require 'subr-x))
 (require 'cl-lib)
-(require 'compat)
 (require 'el-job-child)
 
 (defvar el-job-major-version 2
