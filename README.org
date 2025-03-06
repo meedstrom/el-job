@@ -40,6 +40,10 @@ Since Emacs 30, it's a good idea to instead use the /built-in/ process filter wh
 
 A corollary: if you're testing this on Emacs 29 or below, you don't see this library at its best performance.
 
+** News 2.1.0
+- DROP SUPPORT Emacs 28
+  - It likely has not been working for a while anyway.  May work if you downgrade to [[https://github.com/meedstrom/el-job/tree/v0.3][v0.3 branch]].
+
 ** News 2.0.0
 - Jobs must now have :id (no more anonymous jobs)
 - Pruned many code paths.
@@ -50,8 +54,6 @@ A corollary: if you're testing this on Emacs 29 or below, you don't see this lib
 - Many arguments changed, and a few were removed.  Consult the docstring of =el-job-launch= again.
 
 ** Limitations
-
-1. *May or may not drop support for Emacs 28 and 29* in mid-2025, one month after the [[https://release.debian.org/trixie/freeze_policy.html][the release of Debian trixie]].  For a library with longer back-compat, try [[https://github.com/jwiegley/emacs-async/][async.el]].
 
 2. The return value from the =:funcall-per-input= function must always be a list with a fixed length, where the elements are also lists.
 
