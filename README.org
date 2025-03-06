@@ -36,17 +36,26 @@ Users who tend to run system commands such as =pkill emacs= may find that the co
 *** Emacs 30 =fast-read-process-output=
 Some other libraries, like the popular [[https://github.com/jwiegley/emacs-async/][async.el]], are designed around a custom process filter.
 
-Since Emacs 30, it's a good idea to instead use the /built-in/ process filter when performance is critical, and el-job does so.
+Since Emacs 30, it's a good idea to instead use the /built-in/ process filter when performance is critical, and el-job does so.  Quoting [[https://github.com/emacs-mirror/emacs/blob/master/etc/NEWS.30][NEWS.30]]:
 
-A corollary: if you're testing this on Emacs 29 or below, you don't see this library at its best performance.
+#+begin_src org
+,** The default process filter was rewritten in native code.
+The round-trip through the Lisp function
+'internal-default-process-filter' is skipped when the process filter is
+the default one.  It is reimplemented in native code, reducing GC churn.
+To undo this change, set 'fast-read-process-output' to nil.
+#+end_src
 
 ** News 2.1.0
 - DROP SUPPORT Emacs 28
-  - It likely has not been working for a while anyway.  May work if you downgrade to [[https://github.com/meedstrom/el-job/tree/v0.3][v0.3 branch]].
+  - It likely has not been working for a while anyway.  Maybe works on the [[https://github.com/meedstrom/el-job/tree/v0.3][v0.3 branch]], from 0.3.26+.
 
 ** News 2.0.0
-- Jobs must now have :id (no more anonymous jobs)
+- Jobs must now have =:id= (no more anonymous jobs).
 - Pruned many code paths.
+
+** News 1.1.0
+- Changed internals so that all builds of Emacs can be expected to perform similarly well.
 
 ** News 1.0.0
 - No longer keeps processes alive forever.  All jobs are kept alive for up to 30 seconds of disuse, then reaped.

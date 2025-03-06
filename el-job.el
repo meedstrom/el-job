@@ -409,7 +409,7 @@ For debugging, see these commands:
       (unless (and .busy (eq if-busy 'noop))
         (plist-put .timestamps :launched (current-time))
         ;; TODO: Can we somehow defer this to even later?
-        ;;       Maybe if-busy=wait means don't funcall?
+        ;;       Maybe if-busy=wait could inhibit funcalling it?
         (when (functionp inputs)
           (setq inputs (funcall inputs)))
         (if .busy
@@ -422,6 +422,14 @@ For debugging, see these commands:
           (setq do-exec t))
         (when do-exec
           (setf .callback callback)
+          ;; TODO: Complicate the code-base with this?
+          ;; (let ((machine-cores (max 1 (1- (num-processors)))))
+          ;;   (setf .n-cores-to-use (if (length< inputs machine-cores)
+          ;;                             (length inputs)
+          ;;                           machine-cores)))
+          ;; (when (or (length< .ready .n-cores-to-use)
+          ;;           (not (seq-every-p #'process-live-p .ready)))
+          ;;   (setq do-respawn t))
           (unless (and .ready (seq-every-p #'process-live-p .ready))
             (setq do-respawn t))
           (let ((new-spawn-args (list job
@@ -441,7 +449,8 @@ For debugging, see these commands:
 (defvar-local el-job-here nil)
 (defun el-job--spawn-processes (job load-features inject-vars funcall-per-input)
   "Spin up processes for JOB, standing by for input.
-For the rest of the arguments, see `el-job-launch'."
+For arguments LOAD-FEATURES INJECT-VARS FUNCALL-PER-INPUT,
+see `el-job-launch'."
   (el-job--with job (.stderr .id .ready .spawn-args)
     (let* ((print-length nil)
            (print-level nil)
@@ -557,8 +566,11 @@ should trigger `el-job--handle-output'."
 ;; but spread out the last 7 polls between T-minus-20s and T-minus-30s.
 
 (defun el-job--poll (n bufs)
+  "Check process buffers BUFS for complete output.
+For each where it is complete, handle it.  For the rest, check again
+after a short delay.  N is the count of checks done so far."
   (cl-assert (not (null bufs)))
-  (let (busy-bufs id)
+  (let (busy-bufs)
     (save-current-buffer
       (dolist (buf bufs)
         (if (not (buffer-live-p buf))
@@ -567,12 +579,12 @@ should trigger `el-job--handle-output'."
           (if (eq (char-before) ?\n)
               (el-job--handle-output)
             (push buf busy-bufs))))
-      (when bufs
-        (if (and busy-bufs (<= n 42))
-            (setf (el-job:poll-timer el-job-here)
-                  (run-with-timer
-                   (/ n (float (ash 1 5))) nil #'el-job--poll (1+ n) busy-bufs))
-          (setq id (el-job:id el-job-here))
+      (cl-assert el-job-here)
+      (if (and busy-bufs (<= n 42))
+          (setf (el-job:poll-timer el-job-here)
+                (run-with-timer
+                 (/ n (float (ash 1 5))) nil #'el-job--poll (1+ n) busy-bufs))
+        (let ((id (el-job:id el-job-here)))
           (el-job--disable el-job-here)
           (if busy-bufs
               (message "el-job: Timed out, was busy for 30+ seconds: %s" id)
@@ -653,6 +665,7 @@ same ID still has the benchmarks table and possibly queued input."
 ;;; Tools / public API
 
 (defun el-job-cycle-debug-level ()
+  "Increment `el-job--debug-level'."
   (interactive)
   (message "Variable `el-job--debug-level' set to %d"
            (setq el-job--debug-level (% (1+ el-job--debug-level) 3))))
