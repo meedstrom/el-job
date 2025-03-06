@@ -68,35 +68,36 @@ add that information to the final return value."
     (setq el-job-child--ready t)
     (el-job-child--receive-injection))
   (catch 'die
-    (while-let ((input (read-minibuffer "")))
-      (when (eq input 'die)
-        (throw 'die nil))
-      (let (item start output meta results)
-        (if input
-            (while input
-              (setq item (pop input))
-              (setq start (time-convert nil t))
-              (setq output (funcall func item))
-              (when benchmark
-                (push (time-since start) meta))
-              ;; May affect the durations erratically, so do this step after.
-              (setq results (el-job-child--zip output results)))
-          (funcall func))
-        ;; Ensure durations are in same order that ITEMS came in, letting us
-        ;; associate which with which just by index.
-        (setq meta (nreverse meta))
-        ;; Timestamp the finish-time.  Will be the very `car' of the metadata.
-        (push (time-convert nil t) meta)
-        (let ((print-length nil)
-              (print-level nil)
-              ;; Even though we had set :coding 'utf-8-emacs-unix in the
-              ;; process buffer, this is still necessary.
-              ;; https://github.com/meedstrom/org-node/issues/70
-              (coding-system-for-write 'utf-8-emacs-unix)
-              (print-circle t)
-              (print-escape-newlines t)
-              (print-symbols-bare t))
-          (print (cons meta results)))))))
+    (let (input)
+      (while (setq input (read-minibuffer ""))
+        (when (eq input 'die)
+          (throw 'die nil))
+        (let (item start output meta results)
+          (if input
+              (while input
+                (setq item (pop input))
+                (setq start (time-convert nil t))
+                (setq output (funcall func item))
+                (when benchmark
+                  (push (time-since start) meta))
+                ;; May affect the durations erratically, so do this step after.
+                (setq results (el-job-child--zip output results)))
+            (funcall func))
+          ;; Ensure durations are in same order that ITEMS came in, letting us
+          ;; associate which with which just by index.
+          (setq meta (nreverse meta))
+          ;; Timestamp the finish-time.  Will be the very `car' of the metadata.
+          (push (time-convert nil t) meta)
+          (let ((print-length nil)
+                (print-level nil)
+                ;; Even though we had set :coding 'utf-8-emacs-unix in the
+                ;; process buffer, this is still necessary.
+                ;; https://github.com/meedstrom/org-node/issues/70
+                (coding-system-for-write 'utf-8-emacs-unix)
+                (print-circle t)
+                (print-escape-newlines t)
+                (print-symbols-bare t))
+            (print (cons meta results))))))))
 
 (provide 'el-job-child)
 
