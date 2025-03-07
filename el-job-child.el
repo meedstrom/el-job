@@ -58,38 +58,39 @@ add that information to the final return value."
   ;; things to map to FUNC.
   (catch 'die
     (let ((current-time-list nil) ;; Fewer cons cells
-          input item start output metadata results)
+          input)
       (while (setq input (read-minibuffer ""))
-        (when (eq input 'die)
-          (throw 'die nil))
-        (if input
-            (while input
-              (setq item (pop input))
-              (setq start (current-time))
-              (setq output (funcall func item))
-              (push (time-since start) metadata)
-              ;; REVIEW: Not sure if `el-job-child--zip' should be included in
-              ;; the benchmark.  If yes, move this up to above the line that
-              ;; has `time-since'.  Reason not is if it takes longer as
-              ;; `results' gets longer, then that is not a good benchmark of
-              ;; `item'.  Someone with more Lisp-fu could tell me.
-              (setq results (el-job-child--zip output results)))
-          (funcall func)) ;; Job with no inputs.
-        ;; Ensure durations are in same order that ITEMS came in, letting us
-        ;; associate which with which just by index.
-        (setq metadata (nreverse metadata))
-        ;; Timestamp the finish-time.
-        (push (current-time) metadata)
-        (let ((print-length nil)
-              (print-level nil)
-              ;; Even though we had set :coding 'utf-8-emacs-unix in the
-              ;; process buffer, this is still necessary.
-              ;; https://github.com/meedstrom/org-node/issues/70
-              (coding-system-for-write 'utf-8-emacs-unix)
-              (print-circle t)
-              (print-escape-newlines t)
-              (print-symbols-bare t))
-          (print (cons metadata results)))))))
+        (let (item start output metadata results)
+          (when (eq input 'die)
+            (throw 'die nil))
+          (if input
+              (while input
+                (setq item (pop input))
+                (setq start (current-time))
+                (setq output (funcall func item))
+                (push (time-since start) metadata)
+                (setq results (el-job-child--zip output results)))
+            ;; A job with no inputs.
+            ;; We are the sole subprocess, and we call :funcall-per-inputs
+            ;; a grand total of once, presumably for side effects.
+            ;; REVIEW: Is it even worth keeping this code path?
+            ;;         Probably not.
+            (funcall func nil))
+          ;; Ensure the benchmarks are in same order that ITEMS came in,
+          ;; letting us associate which with which just by index.
+          (setq metadata (nreverse metadata))
+          ;; Timestamp the finish-time.
+          (push (current-time) metadata)
+          (let ((print-length nil)
+                (print-level nil)
+                ;; Even though we had set :coding 'utf-8-emacs-unix in the
+                ;; process buffer, this is still necessary.
+                ;; https://github.com/meedstrom/org-node/issues/70
+                (coding-system-for-write 'utf-8-emacs-unix)
+                (print-circle t)
+                (print-escape-newlines t)
+                (print-symbols-bare t))
+            (print (cons metadata results))))))))
 
 (provide 'el-job-child)
 
