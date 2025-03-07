@@ -46,7 +46,8 @@
 
 (require 'cl-lib)
 (require 'el-job-child)
-(declare-function subr-native-comp-unit "data.c")
+(declare-function native-comp-unit-file nil)
+(declare-function subr-native-comp-unit nil)
 
 (defvar el-job-major-version 2
   "Number incremented for breaking changes.")
