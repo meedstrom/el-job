@@ -684,14 +684,24 @@ Tip: alternatively, you can preserve the process buffers for inspection.
 Use \\[el-job-cycle-debug-level] and they are not killed from then on."
   (interactive)
   (let* ((id (intern (completing-read "Get info on job: " el-jobs)))
-         (job (gethash id el-jobs)))
+         (job (gethash id el-jobs))
+         (print-function
+          (if (y-or-n-p "Print with `cl-prin1' (pretty but may be slow)?")
+              (if (y-or-n-p "Print with `pp' (even prettier)?")
+                  'pp
+                'cl-prin1)
+            'prin1)))
     (when job
       (set-buffer (get-buffer-create "*el-job debug info*" t))
       (so-long-mode)
       (let ((inhibit-read-only t))
         (erase-buffer)
-        (prin1 job (current-buffer)))
-      (switch-to-buffer (current-buffer)))))
+        (funcall print-function job (current-buffer)))
+      (switch-to-buffer (current-buffer))
+      (when (eq print-function 'prin1)
+        (message "Tip: See definition of the `el-job' struct
+for which order the fields come in.
+For example, the first field is ID, second is CALLBACK etc.")))))
 
 (defun el-job-kill-all ()
   "Kill all el-jobs ever registered and forget metadata."
