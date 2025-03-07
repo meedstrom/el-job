@@ -30,9 +30,9 @@ name: "CI"
 on:
   pull_request:
   push:
-    # Comment out this section to enable testing of all branches.
     branches:
       - main
+      - dev
 
 jobs:
   build:
@@ -51,9 +51,9 @@ jobs:
 
     - uses: actions/checkout@v2
 
-    # - name: Install Ispell
-    #   run: |
-    #     sudo apt-get install ispell
+    - name: Install Ispell
+      run: |
+        sudo apt-get install ispell
 
     - name: Initialize sandbox
       run: |
@@ -61,10 +61,14 @@ jobs:
         echo "SANDBOX_DIR=$SANDBOX_DIR" >> $GITHUB_ENV
         ./makem.sh -vv --sandbox=$SANDBOX_DIR --install-deps --install-linters
 
-    # No checkdoc because I don't want to add ispell word exceptions
     - name: Lint (sans checkdoc)
       # continue-on-error: true
-      run: ./makem.sh -vv --sandbox=$SANDBOX_DIR \
+      # run: ./makem.sh -vv --sandbox=$SANDBOX_DIR lint
+
+      # All default linters except checkdoc,
+      # because I don't want to add ispell word exceptions
+      run: >
+        ./makem.sh -vv --sandbox=$SANDBOX_DIR \
            lint-compile \
            lint-declare \
            lint-indent \
