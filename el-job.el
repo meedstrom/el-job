@@ -284,6 +284,7 @@ with one character of your choosing, such as a dot."
                       (:conc-name el-job:))
   id
   callback
+  (n-cores-to-use 1)
   (ready nil :documentation "Processes ready for input.")
   (busy nil :documentation "Processes that have not yet returned output.")
   stderr
@@ -339,7 +340,7 @@ Usually, it would be a function you have written yourself, and you pass
 LOAD-FEATURES to indicate where to find that Emacs Lisp file, plus any
 dependencies not built into Emacs.
 
-LOAD-FEATURES is a list of symbols like those in `features'; the files
+LOAD-FEATURES is a list of symbols like those in `features'\; the files
 in question should end with a `provide' call on the same symbols.
 
 The subprocesses do not inherit `load-path', it is the current Emacs
@@ -404,7 +405,7 @@ For debugging, see these commands:
                  (puthash id (el-job--make :id id) el-jobs)))
         (do-respawn nil)
         (do-exec nil))
-    (el-job--with job ( .queued-inputs .busy .ready
+    (el-job--with job ( .queued-inputs .busy .ready .n-cores-to-use
                         .spawn-args .callback .timestamps )
       (unless (and .busy (eq if-busy 'noop))
         (plist-put .timestamps :launched (current-time))
@@ -422,16 +423,14 @@ For debugging, see these commands:
           (setq do-exec t))
         (when do-exec
           (setf .callback callback)
-          ;; TODO: Complicate the code-base with this?
-          ;; (let ((machine-cores (max 1 (1- (num-processors)))))
-          ;;   (setf .n-cores-to-use (if (length< inputs machine-cores)
-          ;;                             (length inputs)
-          ;;                           machine-cores)))
-          ;; (when (or (length< .ready .n-cores-to-use)
-          ;;           (not (seq-every-p #'process-live-p .ready)))
-          ;;   (setq do-respawn t))
-          (unless (and .ready (seq-every-p #'process-live-p .ready))
-            (setq do-respawn t))
+          ;; Prevent spawning a dozen processes when you'll use only one or two
+          (let ((machine-cores (max 1 (1- (num-processors)))))
+            (setf .n-cores-to-use (if (length< .queued-inputs machine-cores)
+                                      (length .queued-inputs)
+                                    machine-cores))
+            (when (or (length< .ready .n-cores-to-use)
+                      (not (seq-every-p #'process-live-p .ready)))
+              (setq do-respawn t)))
           (let ((new-spawn-args (list job
                                       load-features
                                       inject-vars
@@ -451,29 +450,29 @@ For debugging, see these commands:
   "Spin up processes for JOB, standing by for input.
 For arguments LOAD-FEATURES INJECT-VARS FUNCALL-PER-INPUT,
 see `el-job-launch'."
-  (el-job--with job (.stderr .id .ready .spawn-args)
-    (let* ((print-length nil)
-           (print-level nil)
-           (print-circle t)
-           (print-symbols-bare t)
-           (print-escape-newlines t)
-           (print-escape-nonascii t) ;; Prolly unnecessary
-           (vars (prin1-to-string
-                  (cl-loop for var in inject-vars
-                           if (symbolp var)
-                           collect (cons var (symbol-value var))
-                           else collect var)))
-           (libs (prin1-to-string
-                  (mapcar #'el-job--ensure-compiled-lib load-features)))
-           (command
-            (list
-             (file-name-concat invocation-directory invocation-name)
-             "--quick"
-             "--batch"
-             "--load" (el-job--ensure-compiled-lib 'el-job-child)
-             "--eval" (format "(el-job-child--work #'%S)" funcall-per-input)))
-           ;; Ensure the working directory is not remote (it messes things up)
-           (default-directory invocation-directory))
+  (let* ((print-length nil)
+         (print-level nil)
+         (print-circle t)
+         (print-symbols-bare t)
+         (print-escape-newlines t)
+         (print-escape-nonascii t) ;; Prolly unnecessary
+         (vars (prin1-to-string
+                (cl-loop for var in inject-vars
+                         if (symbolp var)
+                         collect (cons var (symbol-value var))
+                         else collect var)))
+         (libs (prin1-to-string
+                (mapcar #'el-job--ensure-compiled-lib load-features)))
+         (command
+          (list
+           (file-name-concat invocation-directory invocation-name)
+           "--quick"
+           "--batch"
+           "--load" (el-job--ensure-compiled-lib 'el-job-child)
+           "--eval" (format "(el-job-child--work #'%S)" funcall-per-input)))
+         ;; Ensure the working directory is not remote (it messes things up)
+         (default-directory invocation-directory))
+    (el-job--with job (.stderr .id .ready .spawn-args .n-cores-to-use)
       (setf .stderr
             (with-current-buffer
                 (get-buffer-create (format " *el-job:%s:err*" .id) t)
@@ -481,7 +480,7 @@ see `el-job-launch'."
               (erase-buffer)
               (current-buffer)))
       (condition-case err
-          (dotimes (i (max 1 (1- (num-processors))))
+          (dotimes (i .n-cores-to-use)
             (let ((proc (make-process
                          :name (format "el-job:%s:%d" .id i)
                          :noquery t
@@ -514,14 +513,14 @@ This puts them to work.  Each successful child will print output
 \(even nil output) to its associated process buffer, whereupon something
 should trigger `el-job--handle-output'."
   (el-job--with job
-      ( .ready .busy .input-sets .result-sets .queued-inputs
+      ( .ready .busy .input-sets .result-sets .queued-inputs .n-cores-to-use
         .past-elapsed .timestamps .finish-times .id .stderr .poll-timer )
     (cancel-timer .poll-timer)
     (setf .input-sets nil)
     (setf .result-sets nil)
     (setf .finish-times nil)
     (let ((splits (el-job--split-optimally .queued-inputs
-                                           (max 1 (1- (num-processors)))
+                                           .n-cores-to-use
                                            .past-elapsed))
           busy-bufs)
       (unless (length< splits (1+ (length .ready)))
