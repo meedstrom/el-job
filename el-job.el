@@ -46,8 +46,10 @@
 
 (require 'cl-lib)
 (require 'el-job-child)
-(declare-function native-comp-unit-file nil)
-(declare-function subr-native-comp-unit nil)
+
+;; Seems not to work on the GitHub Action at .github/workflows/test.yml
+;; (declare-function native-comp-unit-file "data.c")
+;; (declare-function subr-native-comp-unit "data.c")
 
 (defvar el-job-major-version 2
   "Number incremented for breaking changes.")
@@ -94,6 +96,8 @@ editing."
                                 (not (function-alias-p (cdr elem))))
                       return (cdr elem))))))
     (or (and (native-comp-available-p)
+             (fboundp 'native-comp-unit-file)
+             (fboundp 'subr-native-comp-unit)
              (ignore-errors
                ;; REVIEW: `symbol-file' uses expand-file-name,
                ;;         but I'm not convinced it is needed
