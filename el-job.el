@@ -46,6 +46,7 @@
 
 (require 'cl-lib)
 (require 'el-job-child)
+(declare-function subr-native-comp-unit "data.c")
 
 (defvar el-job-major-version 2
   "Number incremented for breaking changes.")
@@ -269,7 +270,7 @@ See subroutine `el-job-child--zip' for details."
 
 ;;; Main logic
 
-(defvar el-jobs (make-hash-table :test #'eq)
+(defvar el-job--all-jobs (make-hash-table :test #'eq)
   "Table of all el-job objects.")
 
 (defmacro el-job--with (job slots &rest body)
@@ -409,8 +410,8 @@ For debugging, see these commands:
   (unless (proper-list-p load-features)
     (error "Argument LOAD-FEATURES must be a list"))
   (unless id (error "Argument ID now mandatory"))
-  (let ((job (or (gethash id el-jobs)
-                 (puthash id (el-job--make :id id) el-jobs)))
+  (let ((job (or (gethash id el-job--all-jobs)
+                 (puthash id (el-job--make :id id) el-job--all-jobs)))
         (do-respawn nil)
         (do-exec nil))
     (el-job--with job ( .queued-inputs .busy .ready .n-cores-to-use
@@ -683,8 +684,8 @@ same ID still has the benchmarks table and possibly queued input."
 Tip: alternatively, you can preserve the process buffers for inspection.
 Use \\[el-job-cycle-debug-level] and they are not killed from then on."
   (interactive)
-  (let* ((id (intern (completing-read "Get info on job: " el-jobs)))
-         (job (gethash id el-jobs))
+  (let* ((id (intern (completing-read "Get info on job: " el-job--all-jobs)))
+         (job (gethash id el-job--all-jobs))
          (print-function
           (if (y-or-n-p "Print with `cl-prin1' (pretty but may be slow)?")
               (if (y-or-n-p "Print with `pp' (even prettier)?")
@@ -704,12 +705,12 @@ for which order the fields come in.
 For example, the first field is ID, second is CALLBACK etc.")))))
 
 (defun el-job-kill-all ()
-  "Kill all el-jobs ever registered and forget metadata."
+  "Kill all el-job--all-jobs ever registered and forget metadata."
   (interactive)
   (maphash (lambda (id job)
              (el-job--disable job)
-             (remhash id el-jobs))
-           el-jobs))
+             (remhash id el-job--all-jobs))
+           el-job--all-jobs))
 
 (defun el-job-await (id max-secs &optional message)
   "Block until all processes for job ID finished, then return t.
@@ -731,7 +732,7 @@ Meanwhile, ensure string MESSAGE is visible in the minibuffer."
 (defun el-job-is-busy (id)
   "Return list of busy processes for job ID, if any.
 Safely return nil otherwise, whether or not ID is known."
-  (let ((job (gethash id el-jobs)))
+  (let ((job (gethash id el-job--all-jobs)))
     (and job (el-job:busy job))))
 
 (provide 'el-job)
