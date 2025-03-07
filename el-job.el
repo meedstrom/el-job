@@ -32,7 +32,15 @@
 ;; passes it back to the current Emacs.  In the meantime, current Emacs does
 ;; not hang at all.
 
-;; The only public API is the function `el-job-launch'.
+;; Public API:
+;; - `el-job-launch' (also main documentation)
+;; - `el-job-await'
+;; - `el-job-is-busy'
+
+;; Dev tools:
+;; - `el-job-cycle-debug-level'
+;; - `el-job-show-info'
+;; - `el-job-kill-all'
 
 ;;; Code:
 
@@ -470,7 +478,8 @@ see `el-job-launch'."
            "--batch"
            "--load" (el-job--ensure-compiled-lib 'el-job-child)
            "--eval" (format "(el-job-child--work #'%S)" funcall-per-input)))
-         ;; Ensure the working directory is not remote (it messes things up)
+         ;; Ensure the working directory is not remote.
+         ;; https://github.com/meedstrom/org-node/issues/46
          (default-directory invocation-directory))
     (el-job--with job (.stderr .id .ready .spawn-args .n-cores-to-use)
       (setf .stderr
