@@ -61,14 +61,15 @@ jobs:
         echo "SANDBOX_DIR=$SANDBOX_DIR" >> $GITHUB_ENV
         ./makem.sh -vv --sandbox=$SANDBOX_DIR --install-deps --install-linters
 
-    # The "all" rule is not used, because it treats compilation warnings
-    # as failures, so linting and testing are run as separate steps.
-
-    - name: Lint
-      # NOTE: Uncomment this line to treat lint failures as passing
-      #       so the job doesn't show failure.
+    # No checkdoc because I don't want to add ispell word exceptions
+    - name: Lint (sans checkdoc)
       # continue-on-error: true
-      run: ./makem.sh -vv --sandbox=$SANDBOX_DIR lint
+      run: ./makem.sh -vv --sandbox=$SANDBOX_DIR \
+           lint-compile \
+           lint-declare \
+           lint-indent \
+           lint-package \
+           lint-regexps
 
     - name: Test
       if: always()  # Run test even if linting fails.

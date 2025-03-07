@@ -47,7 +47,7 @@
 (require 'cl-lib)
 (require 'el-job-child)
 
-;; Seems not to work on the GitHub Action at .github/workflows/test.yml
+;; Seems not to work on the CI at .github/workflows/test.yml
 ;; (declare-function native-comp-unit-file "data.c")
 ;; (declare-function subr-native-comp-unit "data.c")
 
