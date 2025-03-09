@@ -78,9 +78,13 @@ FEATURE is a symbol such as those seen in `features'.
 
 Return whichever variant was in fact loaded by the current Emacs.
 
-Unusually, this looks in `load-history', not `load-path', so the result
-can change after you use `eval-buffer' in an .el file that you are
-editing."
+Unusually, as a programmer convenience, this looks in `load-history'
+instead of `load-path', so the result can change after you use
+`eval-buffer' in an .el file that you are editing: it will change to
+return that .el file.
+
+See wrapper `el-job--ensure-compiled-lib' for a convenient way to return
+an .eln anyway, without your having to recompile on save."
   (cl-loop for (file . elems) in load-history
            when (eq feature (cdr (assq 'provide elems)))
            return
@@ -119,9 +123,9 @@ find the correct file."
       (error "Current Lisp definitions must come from a file %S[.el/.elc/.eln]"
              feature))
     ;; HACK: Sometimes comp.el makes freefn- temp files.  It sounds like we
-    ;;       would not normally see it unless user is evalling defuns in a
-    ;;       scratch buffer, but not sure.  Signal the first time this happens,
-    ;;       then fall back on load-path.
+    ;; would not normally see it unless user is evalling defuns in a scratch
+    ;; buffer, but not sure.  Signal the first time this happens, then fall
+    ;; back on load-path.
     (when (string-search "freefn-" loaded)
       (unless el-job--onetime-canary
         (setq el-job--onetime-canary t)
@@ -132,9 +136,14 @@ find the correct file."
     (if (or (string-suffix-p ".el" loaded)
             (string-suffix-p ".el.gz" loaded))
         (or (when (native-comp-available-p)
-              ;; If we built an .eln last time, return it now even
-              ;; though the current Emacs process is still running
-              ;; interpreted .el.
+              ;; If we built an .eln last time, return it now even though the
+              ;; current Emacs process is still running interpreted .el.
+              ;;
+              ;; NOTE: Thanks to hashing file contents, `comp-lookup-eln'
+              ;; returns nil if the .el has changed on disk, even if the
+              ;; developer did not eval-buffer again.  Then we proceed to build
+              ;; another .eln.  Not sure I'm a fan... but eh, Works For Me, and
+              ;; it removes the need to `eval-buffer' constantly.
               (comp-lookup-eln loaded))
             (let* ((elc (file-name-concat temporary-file-directory
                                           (concat (symbol-name feature)
@@ -147,7 +156,7 @@ find the correct file."
                 ;; always take precedence over the one shipped by Guix.
                 ;; If we want to cover for that, it'd be safer to compile into
                 ;; /tmp with a filename based on e.g. `after-init-time'.
-                ;; Users who install FEATURE thru Guix are prolly safe.
+                ;; Users who install FEATURE purely thru Guix are prolly safe.
                 ;; https://github.com/meedstrom/org-node/issues/68
                 (native-compile-async (list loaded)))
               ;; Native comp may take a while, so build and return .elc this
