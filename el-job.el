@@ -54,6 +54,9 @@
 (defvar el-job-major-version 2
   "Number incremented for breaking changes.")
 
+(define-obsolete-variable-alias 'el-jobs 'el-job--all-jobs "2.2.0 (2025-03-09)"
+  "I liked this name, but it breaks an Elisp convention.")
+
 
 ;;; Subroutines
 
