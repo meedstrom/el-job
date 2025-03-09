@@ -24,32 +24,31 @@
 
 ;;; Commentary:
 
-;; Imagine you have a function you'd like to run on a long list of inputs.  You
-;; could run (mapcar #'FN INPUTS), but that hangs Emacs until done.
+;; Imagine you have a function you'd like to run on a long list of inputs.
+;; You could run (mapcar #'FN INPUTS), but that hangs Emacs until done.
 
-;; This library gives you the tools to split up the inputs and run the function
-;; in many subprocesses (one per CPU core), then merges their outputs and
-;; passes it back to the current Emacs.  In the meantime, current Emacs does
-;; not hang at all.
+;; This library lets you split up the inputs and run the function in many
+;; subprocesses---one per CPU core---then merge their outputs and handle the
+;; result as if it had been returned by that `mapcar'.  In the meantime,
+;; current Emacs does not hang at all.
+
+;; You need to know the concept of a callback.
 
 ;; Public API:
-;; - `el-job-launch' (also main documentation)
-;; - `el-job-await'
-;; - `el-job-is-busy'
+;; - Function `el-job-launch' (read its docstring)
+;; - Function `el-job-await'
+;; - Function `el-job-is-busy'
+;; - Variable `el-job-major-version'
 
 ;; Dev tools:
-;; - `el-job-cycle-debug-level'
-;; - `el-job-show-info'
-;; - `el-job-kill-all'
+;; - Command `el-job-cycle-debug-level'
+;; - Command `el-job-show-info'
+;; - Command `el-job-kill-all'
 
 ;;; Code:
 
 (require 'cl-lib)
 (require 'el-job-child)
-
-;; Seems not to work on the CI at .github/workflows/test.yml
-;; (declare-function native-comp-unit-file "data.c")
-;; (declare-function subr-native-comp-unit "data.c")
 
 (defvar el-job-major-version 2
   "Number incremented for breaking changes.")
@@ -98,16 +97,12 @@ editing."
                                 (not (consp (symbol-function (cdr elem))))
                                 (not (function-alias-p (cdr elem))))
                       return (cdr elem))))))
-    (or (and (native-comp-available-p)
-             (fboundp 'native-comp-unit-file)
+    (or (and (fboundp 'native-comp-unit-file)
              (fboundp 'subr-native-comp-unit)
-             (ignore-errors
-               ;; REVIEW: `symbol-file' uses expand-file-name,
-               ;;         but I'm not convinced it is needed
-               (expand-file-name
-                (native-comp-unit-file
-                 (subr-native-comp-unit
-                  (symbol-function (cdr hit)))))))
+             (native-comp-available-p)
+             (native-comp-unit-file
+              (subr-native-comp-unit
+               (symbol-function (cdr hit)))))
         (car hit))))
 
 (defvar el-job--onetime-canary nil)
