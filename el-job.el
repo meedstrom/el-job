@@ -81,30 +81,24 @@ Return whichever variant was in fact loaded by the current Emacs.
 Unusually, this looks in `load-history', not `load-path', so the result
 can change after you use `eval-buffer' in an .el file that you are
 editing."
-  (let ((hit
-         (cl-loop
-          for (file . elems) in load-history
-          when (eq feature (cdr (assq 'provide elems)))
-          return
-          ;; Want two pieces of info: the file path according to
-          ;; `load-history', and some function supposedly defined
-          ;; there.  The function is a better source of info, for
-          ;; discovering an .eln.
-          (cons file (cl-loop
-                      for elem in elems
-                      when (and (consp elem)
-                                (eq 'defun (car elem))
-                                (not (consp (symbol-function (cdr elem))))
-                                (not (function-alias-p (cdr elem))))
-                      return (cdr elem))))))
-    (or (and (fboundp 'native-comp-unit-file)
-             (fboundp 'subr-native-comp-unit)
-             (native-comp-available-p)
-             (ignore-errors
-               (native-comp-unit-file
-                (subr-native-comp-unit
-                 (symbol-function (cdr hit))))))
-        (car hit))))
+  (cl-loop for (file . elems) in load-history
+           when (eq feature (cdr (assq 'provide elems)))
+           return
+           ;; Seek a natively-compiled function supposedly defined in FILE.
+           ;; That function symbol appears to be the best source of information
+           ;; for finding the real .eln file; FILE may only be .el or .elc.
+           (or (and (fboundp 'subrp)
+                    (fboundp 'native-comp-unit-file)
+                    (fboundp 'subr-native-comp-unit)
+                    (cl-loop for elem in elems
+                             when (and (consp elem)
+                                       (eq 'defun (car elem))
+                                       (symbolp (cdr elem))
+                                       (subrp (symbol-function (cdr elem))))
+                             return (native-comp-unit-file
+                                     (subr-native-comp-unit
+                                      (symbol-function (cdr elem))))))
+               file)))
 
 (defvar el-job--onetime-canary nil)
 (defun el-job--ensure-compiled-lib (feature)
