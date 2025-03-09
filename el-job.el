@@ -100,9 +100,10 @@ editing."
     (or (and (fboundp 'native-comp-unit-file)
              (fboundp 'subr-native-comp-unit)
              (native-comp-available-p)
-             (native-comp-unit-file
-              (subr-native-comp-unit
-               (symbol-function (cdr hit)))))
+             (ignore-errors
+               (native-comp-unit-file
+                (subr-native-comp-unit
+                 (symbol-function (cdr hit))))))
         (car hit))))
 
 (defvar el-job--onetime-canary nil)
