@@ -447,7 +447,7 @@ For debugging, see these commands:
                                       (length .queued-inputs)
                                     machine-cores))
             (when (or (length< .ready .n-cores-to-use)
-                      (not (seq-every-p #'process-live-p .ready)))
+                      (not (cl-every #'process-live-p .ready)))
               (setq do-respawn t)))
           (let ((new-spawn-args (list job
                                       load-features
