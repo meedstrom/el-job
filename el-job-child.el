@@ -21,29 +21,29 @@
 
 ;;; Code:
 
-(defun el-job-child--zip (meta-list1 meta-list2)
+(defun el-job-child--zip (list1 list2)
   "Destructively zip two lists into one.
 Like the Dash expression \(-zip-with #\\='nconc list1 list2).
 
-META-LIST1 and META-LIST2 must be lists of identical length,
+LIST1 and LIST2 must be lists of identical length,
 and each element in them must be a list or nil."
   (let (merged)
-    (while meta-list1
-      (push (nconc (pop meta-list1) (pop meta-list2)) merged))
-    (when meta-list2 (error "Lists differed in length"))
+    (while list1
+      (push (nconc (pop list1) (pop list2)) merged))
+    (when list2 (error "Lists differed in length"))
     (nreverse merged)))
 
 (defun el-job-child--work (func &optional _)
-  "Handle input from mother process `el-job--exec' and print a result.
+  "Handle input from `el-job--exec-workload' and print a result.
 
-Since `print' prints to standard output, it would be expected to
-be passed to a function in the mother process, called the process
-filter.
+Since `print' prints to standard output, the mother\\='s so-called
+process filter function will see that and insert the result into
+the corresponding process buffer.
 
 Assume the input is a list of arguments to pass to FUNC one at a time.
-FUNC comes from the :funcall argument of `el-job-launch'.
+FUNC comes from the :funcall-per-inputs argument of `el-job-launch'.
 
-Benchmark how long FUNC took to handle each item, and
+Benchmark how long FUNC takes to handle each item, and
 add that information to the final return value."
   ;; Use `read-minibuffer' to receive what we got via `process-send-string'
   ;; from parent.  Could also use just `read', but that prints an unnecessary
@@ -54,11 +54,11 @@ add that information to the final return value."
       (set (car var) (cdr var)))
     (dolist (lib libs)
       (load lib)))
-  ;; Begin infinite loop, treating each further input from parent as a list of
-  ;; things to map to FUNC.
   (catch 'die
     (let ((current-time-list nil) ;; Fewer cons cells
           input)
+      ;; Begin infinite loop, treating each further input from parent as
+      ;; a list of things to map to FUNC.
       (while (setq input (read-minibuffer ""))
         (let (item start output metadata results)
           (when (eq input 'die)
@@ -70,7 +70,7 @@ add that information to the final return value."
                 (setq output (funcall func item))
                 (push (time-since start) metadata)
                 (setq results (el-job-child--zip output results)))
-            ;; A job with no inputs.
+            ;; A job with nil input.
             ;; We are the sole subprocess, and we call :funcall-per-inputs
             ;; a grand total of once, presumably for side effects.
             ;; REVIEW: Is it even worth keeping this code path?
