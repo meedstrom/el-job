@@ -313,8 +313,7 @@ with one character of your choosing, such as a dot."
   (past-elapsed (make-hash-table :test #'equal))
   queued-inputs
   input-sets
-  result-sets
-  merged-results)
+  result-sets)
 
 ;;;###autoload
 (cl-defun el-job-launch (&key id
@@ -428,6 +427,8 @@ For debugging, see these commands:
         (plist-put .timestamps :launched (current-time))
         ;; TODO: Can we somehow defer this to even later?
         ;;       Maybe if-busy=wait could inhibit funcalling it?
+        ;;       In fact, if we mandate that it be a function,
+        ;;       might be able to get rid of the concept of .queued-inputs.
         (when (functionp inputs)
           (setq inputs (funcall inputs)))
         (if .busy
@@ -580,7 +581,7 @@ should trigger `el-job--handle-output'."
 ;; (-reductions '+ (--map (/ it (float (ash 1 5))) (-iterate '1+ 1 42)))
 
 ;; As you can see, we do 7 polls inside the first second,
-;; but spread out the last 7 polls between T-minus-20s and T-minus-30s.
+;; but spread out the last 7 polls between T=20s and T=30s.
 
 (defun el-job--poll (n bufs)
   "Check process buffers BUFS for complete output.
@@ -613,50 +614,48 @@ after a short delay.  N is the count of checks done so far."
 If this is the last output for the job, merge all outputs, maybe execute
 the callback function, finally maybe run the job again if there is now
 more input in the queue."
-  (let* ((inhibit-quit t)
-         (proc (get-buffer-process (current-buffer)))
-         (job el-job-here)
-         finish-time
-         durations
-         results)
-    (condition-case err (let ((output (read (buffer-string))))
-                          (setq finish-time (caar output))
-                          (setq durations (cdar output))
-                          (setq results (cdr output)))
-      (( error )
-       (el-job--unhide-buffer (el-job:stderr job))
-       (dolist (proc (append (el-job:busy job)
-                             (el-job:ready job)))
-         (el-job--unhide-buffer (process-buffer proc))
-         (delete-process proc))
-       (error "In buffer %s: problems reading child output: %S"
-              (current-buffer) err)))
-    (when results
-      (el-job--with job
-          ( .busy .ready .input-sets .past-elapsed .result-sets .queued-inputs
-            .timestamps .id .finish-times .callback .merged-results )
-        (push finish-time .finish-times)
+  (let ((inhibit-quit t)
+        (proc (get-buffer-process (current-buffer)))
+        (job el-job-here)
+        finish-time
+        durations
+        results)
+    (el-job--with job
+        ( .busy .ready .input-sets .past-elapsed .result-sets .stderr
+          .queued-inputs .timestamps .id .finish-times .callback )
+      (condition-case err (let ((output (read (buffer-string))))
+                            (setq finish-time (caar output))
+                            (setq durations (cdar output))
+                            (setq results (cdr output)))
+        (( error )
+         (el-job--unhide-buffer .stderr)
+         (dolist (proc (append .busy .ready))
+           (el-job--unhide-buffer (process-buffer proc))
+           (delete-process proc))
+         (error "In buffer %s: problems reading child output: %S"
+                (current-buffer) err)))
+      (push finish-time .finish-times)
+      (setf .busy (delq proc .busy))
+      (push proc .ready)
+      (when results
+        (push results .result-sets)
         ;; Record time spent by FUNCALL-PER-INPUT on each item in INPUTS,
         ;; for a better `el-job--split-optimally' in the future.
         (let ((inputs (alist-get proc .input-sets)))
           (while durations
-            (puthash (pop inputs) (pop durations) .past-elapsed)))
-        (push results .result-sets)
-        (setf .busy (delq proc .busy))
-        (push proc .ready)
+            (puthash (pop inputs) (pop durations) .past-elapsed))))
 
-        ;; Extra actions when this was the last output
-        (when (null .busy)
-          (let ((last-done (car (last (sort .finish-times #'time-less-p)))))
-            (plist-put .timestamps :work-done last-done))
-          (plist-put .timestamps :callback-begun (current-time))
-          ;; Finally the purpose of it all.
-          ;; Somehow, it took 700 lines of code to get here.
-          (setf .merged-results (el-job--zip-all .result-sets))
-          (when .callback
-            (funcall .callback .merged-results job))
-          (when .queued-inputs
-            (el-job--exec-workload job)))))))
+      ;; Extra actions when this was the last output
+      (when (null .busy)
+        (let ((last-done (car (last (sort .finish-times #'time-less-p)))))
+          (plist-put .timestamps :work-done last-done))
+        (plist-put .timestamps :callback-begun (current-time))
+        ;; Finally the purpose of it all.
+        ;; Somehow, it took 700 lines of code to get here.
+        (when .callback
+          (funcall .callback (el-job--zip-all .result-sets) job))
+        (when .queued-inputs
+          (el-job--exec-workload job))))))
 
 (defun el-job--disable (job)
   "Kill processes in JOB and their process buffers.
