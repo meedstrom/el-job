@@ -85,24 +85,25 @@ return that .el file.
 
 See wrapper `el-job--ensure-compiled-lib' for a convenient way to return
 an .eln anyway, without your having to recompile on save."
-  (cl-loop for (file . elems) in load-history
-           when (eq feature (cdr (assq 'provide elems)))
-           return
-           ;; Seek a natively-compiled function supposedly defined in FILE.
-           ;; That function symbol appears to be the best source of information
-           ;; for finding the real .eln file; FILE may only be .el or .elc.
-           (or (and (fboundp 'subrp)
-                    (fboundp 'native-comp-unit-file)
-                    (fboundp 'subr-native-comp-unit)
-                    (cl-loop for elem in elems
-                             when (and (consp elem)
-                                       (eq 'defun (car elem))
-                                       (symbolp (cdr elem))
-                                       (subrp (symbol-function (cdr elem))))
-                             return (native-comp-unit-file
-                                     (subr-native-comp-unit
-                                      (symbol-function (cdr elem))))))
-               file)))
+  (cl-loop
+   for (file . elems) in load-history
+   when (eq feature (cdr (assq 'provide elems)))
+   return
+   ;; Look for a natively-compiled function supposedly defined in FILE.
+   ;; It's the most reliable way to find the .eln.
+   ;; FILE may be .el or .elc even if the .eln exists and is being used.
+   (or (and (fboundp 'subrp)
+            (fboundp 'native-comp-unit-file)
+            (fboundp 'subr-native-comp-unit)
+            (cl-loop for elem in elems
+                     when (and (consp elem)
+                               (eq 'defun (car elem))
+                               (symbolp (cdr elem))
+                               (subrp (symbol-function (cdr elem))))
+                     return (native-comp-unit-file
+                             (subr-native-comp-unit
+                              (symbol-function (cdr elem))))))
+       file)))
 
 (defvar el-job--onetime-canary nil)
 (defun el-job--ensure-compiled-lib (feature)
