@@ -267,12 +267,12 @@ being saddled with a huge item in addition to the average workload."
                           sublists)))))
         sublists)))))
 
-(defun el-job--zip-all (meta-lists)
-  "Destructively zip all META-LISTS into one.
+(defun el-job--zip-all (lists)
+  "Destructively zip all LISTS into one.
 See subroutine `el-job-child--zip' for details."
-  (let ((merged (pop meta-lists)))
-    (while meta-lists
-      (setq merged (el-job-child--zip (pop meta-lists) merged)))
+  (let ((merged (pop lists)))
+    (while lists
+      (setq merged (el-job-child--zip (pop lists) merged)))
     merged))
 
 
@@ -283,7 +283,7 @@ See subroutine `el-job-child--zip' for details."
 
 (defmacro el-job--with (job slots &rest body)
   "Make SLOTS expand into object accessors for `el-job' JOB inside BODY.
-Cf. `with-slots' in the eieio library, or `let-alist'.
+Cf. `with-slots' in the \"eieio\" library, or `let-alist'.
 
 For clarity inside BODY, each symbol name in SLOTS must be prepended
 with one character of your choosing, such as a dot."
@@ -428,7 +428,7 @@ For debugging, see these commands:
         ;; TODO: Can we somehow defer this to even later?
         ;;       Maybe if-busy=wait could inhibit funcalling it?
         ;;       In fact, if we mandate that it be a function,
-        ;;       might be able to get rid of the concept of .queued-inputs.
+        ;;       might be able to get rid of the concept of queued-inputs.
         (when (functionp inputs)
           (setq inputs (funcall inputs)))
         (if .busy
