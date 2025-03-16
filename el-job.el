@@ -19,7 +19,7 @@
 ;; URL:              https://github.com/meedstrom/el-job
 ;; Created:          2024-10-30
 ;; Keywords:         processes
-;; Package-Version:  2.2.3
+;; Package-Version:  2.3.0
 ;; Package-Requires: ((emacs "29.1"))
 
 ;;; Commentary:
