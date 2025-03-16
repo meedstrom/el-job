@@ -291,14 +291,13 @@ with one character of your choosing, such as a dot."
   `(cl-symbol-macrolet
        ,(cl-loop
          for slot in slots
-         collect `(,slot (,(intern (concat "el-job:"
+         collect `(,slot (,(intern (concat "el-job-"
                                            (substring (symbol-name slot) 1)))
                           ,job)))
      ,@body))
 
 (cl-defstruct (el-job (:constructor el-job--make)
-                      (:copier nil)
-                      (:conc-name el-job:))
+                      (:copier nil))
   id
   callback
   (n-cores-to-use 1)
@@ -383,7 +382,7 @@ CALLBACK receives two arguments: the results as mentioned before, and the
 job object.  The latter is mainly useful to check timestamps,
 which you can get from this form:
 
-    \(el-job:timestamps JOB)
+    \(el-job-timestamps JOB)
 
 
 ID is a symbol identifying this job.  It has several purposes:
@@ -599,10 +598,10 @@ after a short delay.  N is the count of checks done so far."
             (push buf busy-bufs))))
       (cl-assert el-job-here)
       (if (and busy-bufs (<= n 42))
-          (setf (el-job:poll-timer el-job-here)
+          (setf (el-job-poll-timer el-job-here)
                 (run-with-timer
                  (/ n (float (ash 1 5))) nil #'el-job--poll (1+ n) busy-bufs))
-        (let ((id (el-job:id el-job-here)))
+        (let ((id (el-job-id el-job-here)))
           (el-job--disable el-job-here)
           (if busy-bufs
               (message "el-job: Timed out, was busy for 30+ seconds: %s" id)
@@ -740,7 +739,25 @@ Meanwhile, ensure string MESSAGE is visible in the minibuffer."
   "Return list of busy processes for job ID, if any.
 Safely return nil otherwise, whether or not ID is known."
   (let ((job (gethash id el-job--all-jobs)))
-    (and job (el-job:busy job))))
+    (and job (el-job-busy job))))
+
+
+;;; Ok, don't need to break convention anymore.
+
+(define-obsolete-function-alias 'el-job:id 'el-job-id "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:callback 'el-job-callback "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:n-cores-to-use 'el-job-n-cores-to-use "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:ready 'el-job-ready "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:busy 'el-job-busy "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:stderr 'el-job-stderr "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:timestamps 'el-job-timestamps "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:poll-timer 'el-job-poll-timer "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:finish-times 'el-job-finish-times "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:spawn-args 'el-job-spawn-args "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:past-elapsed 'el-job-past-elapsed "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:queued-inputs 'el-job-queued-inputs "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:input-sets 'el-job-input-sets "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:result-sets 'el-job-result-sets "2.3.0 (2025-03-16)")
 
 (provide 'el-job)
 
