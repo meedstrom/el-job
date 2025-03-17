@@ -306,7 +306,7 @@ with one character of your choosing, such as a dot."
   stderr
   ;; Not an interesting timestamp, but `plist-put' needs a non-empty list.
   (timestamps (list :initial-job-creation (current-time)))
-  (poll-timer (timer-create))
+  (timer (timer-create))
   finish-times
   spawn-args
   (past-elapsed (make-hash-table :test #'equal))
@@ -532,8 +532,8 @@ This puts them to work.  Each successful child will print output
 should trigger `el-job--handle-output'."
   (el-job--with job
       ( .ready .busy .input-sets .result-sets .queued-inputs .n-cores-to-use
-        .past-elapsed .timestamps .finish-times .id .stderr .poll-timer )
-    (cancel-timer .poll-timer)
+        .past-elapsed .timestamps .finish-times .id .stderr .timer )
+    (cancel-timer .timer)
     (setf .input-sets nil)
     (setf .result-sets nil)
     (setf .finish-times nil)
@@ -563,7 +563,7 @@ should trigger `el-job--handle-output'."
                  splits)))
       (setf .queued-inputs nil)
       (plist-put .timestamps :work-begun (current-time))
-      (setf .poll-timer (run-with-timer .02 nil #'el-job--poll 1 busy-bufs)))))
+      (setf .timer (run-with-timer .02 nil #'el-job--poll 1 busy-bufs)))))
 
 ;; Polling: simplistic but reliable.
 
@@ -597,16 +597,24 @@ after a short delay.  N is the count of checks done so far."
               (el-job--handle-output)
             (push buf busy-bufs))))
       (cl-assert el-job-here)
-      (when busy-bufs
-        (if (<= n 42)
-            (setf (el-job-poll-timer el-job-here)
-                  (run-with-timer
-                   (/ n (float (ash 1 5))) nil #'el-job--poll (1+ n) busy-bufs))
-          (let ((id (el-job-id el-job-here)))
+      (if busy-bufs
+          (if (<= n 42)
+              (setf (el-job-timer el-job-here)
+                    (run-with-timer
+                     (/ n (float (ash 1 5))) nil #'el-job--poll (1+ n) busy-bufs))
             (el-job--disable el-job-here)
-            (if busy-bufs
-                (message "el-job: Timed out, was busy for 30+ seconds: %s" id)
-              (el-job--dbg 2 "Reaped idle processes for %s" id))))))))
+            (message "el-job: Timed out, was busy for 30+ seconds: %s"
+                     (el-job-id el-job-here)))
+        (cl-assert (not (member (el-job-timer el-job-here) timer-list)))
+        (setf (el-job-timer el-job-here)
+              (run-with-timer 30 nil #'el-job--reap (current-buffer)))))))
+
+(defun el-job--reap (buf)
+  "If BUF is still alive, kill processes in the job associated with it."
+  (when (buffer-live-p buf)
+    (let ((job (buffer-local-value 'el-job-here buf)))
+      (el-job--disable job)
+      (el-job--dbg 2 "Reaped idle processes for %s" (el-job-id job)))))
 
 (defun el-job--handle-output ()
   "Handle output in current buffer.
@@ -662,8 +670,8 @@ more input in the queue."
 
 This does not deregister the job ID.  That means the next launch with
 same ID still has the benchmarks table and possibly queued input."
-  (el-job--with job (.id .busy .ready .stderr .poll-timer)
-    (cancel-timer .poll-timer)
+  (el-job--with job (.id .busy .ready .stderr .timer)
+    (cancel-timer .timer)
     (dolist (proc (append .busy .ready))
       (let ((buf (process-buffer proc)))
         ;; Why can BUF be nil?  And why is `kill-buffer' so unsafe? can we
@@ -764,7 +772,7 @@ Safely return nil otherwise, whether or not ID is known."
 (define-obsolete-function-alias 'el-job:busy 'el-job-busy "2.3.0 (2025-03-16)")
 (define-obsolete-function-alias 'el-job:stderr 'el-job-stderr "2.3.0 (2025-03-16)")
 (define-obsolete-function-alias 'el-job:timestamps 'el-job-timestamps "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:poll-timer 'el-job-poll-timer "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:poll-timer 'el-job-timer "2.3.0 (2025-03-16)")
 (define-obsolete-function-alias 'el-job:finish-times 'el-job-finish-times "2.3.0 (2025-03-16)")
 (define-obsolete-function-alias 'el-job:spawn-args 'el-job-spawn-args "2.3.0 (2025-03-16)")
 (define-obsolete-function-alias 'el-job:past-elapsed 'el-job-past-elapsed "2.3.0 (2025-03-16)")
