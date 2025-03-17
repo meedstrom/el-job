@@ -597,15 +597,16 @@ after a short delay.  N is the count of checks done so far."
               (el-job--handle-output)
             (push buf busy-bufs))))
       (cl-assert el-job-here)
-      (if (and busy-bufs (<= n 42))
-          (setf (el-job-poll-timer el-job-here)
-                (run-with-timer
-                 (/ n (float (ash 1 5))) nil #'el-job--poll (1+ n) busy-bufs))
-        (let ((id (el-job-id el-job-here)))
-          (el-job--disable el-job-here)
-          (if busy-bufs
-              (message "el-job: Timed out, was busy for 30+ seconds: %s" id)
-            (el-job--dbg 2 "Reaped idle processes for %s" id)))))))
+      (when busy-bufs
+        (if (<= n 42)
+            (setf (el-job-poll-timer el-job-here)
+                  (run-with-timer
+                   (/ n (float (ash 1 5))) nil #'el-job--poll (1+ n) busy-bufs))
+          (let ((id (el-job-id el-job-here)))
+            (el-job--disable el-job-here)
+            (if busy-bufs
+                (message "el-job: Timed out, was busy for 30+ seconds: %s" id)
+              (el-job--dbg 2 "Reaped idle processes for %s" id))))))))
 
 (defun el-job--handle-output ()
   "Handle output in current buffer.
