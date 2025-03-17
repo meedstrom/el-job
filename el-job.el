@@ -697,14 +697,16 @@ same ID still has the benchmarks table and possibly queued input."
 
 (defun el-job-show-info ()
   "Prompt for a job and show its data in a new buffer.
-Tip: alternatively, you can preserve the process buffers for inspection.
-Use \\[el-job-cycle-debug-level] and they are not killed from then on."
+
+Tip: you can also inspect the contents of the process buffers.
+Use \\[el-job-cycle-debug-level] so the debug level is 1+, then look
+for buffer names starting with \" *el-job\" - note leading space."
   (interactive)
   (let* ((id (intern (completing-read "Get info on job: " el-job--all-jobs)))
          (job (gethash id el-job--all-jobs))
          (print-function
-          (if (y-or-n-p "Print with `cl-prin1' (pretty but may be slow)?")
-              (if (y-or-n-p "Print with `pp' (even prettier)?")
+          (if (y-or-n-p "Pretty-print with `cl-prin1' (choose no if slow)? ")
+              (if (y-or-n-p "Print with `pp' (even prettier)? ")
                   'pp
                 'cl-prin1)
             'prin1)))
