@@ -668,10 +668,13 @@ same ID still has the benchmarks table and possibly queued input."
         (delete-process proc)
         (and (= 0 el-job--debug-level)
              ;; Why can BUF be nil?
+             ;; And why is `kill-buffer' so unsafe?
+             ;; Can we upstream a `kill-buffer-safe' or `kill-buffer-assert'
+             ;; or `kill-live-buffer' that errors when argument is nil?
              (buffer-live-p buf)
              (kill-buffer buf))))
     (and (= 0 el-job--debug-level)
-         (buffer-live-p buf)
+         (buffer-live-p .stderr)
          (kill-buffer .stderr))
     (setf .busy nil)
     (setf .ready nil)))
