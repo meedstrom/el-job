@@ -666,8 +666,13 @@ same ID still has the benchmarks table and possibly queued input."
     (dolist (proc (append .busy .ready))
       (let ((buf (process-buffer proc)))
         (delete-process proc)
-        (when (= 0 el-job--debug-level) (kill-buffer buf))))
-    (when (= 0 el-job--debug-level) (kill-buffer .stderr))
+        (and (= 0 el-job--debug-level)
+             ;; Why can BUF be nil?
+             (buffer-live-p buf)
+             (kill-buffer buf))))
+    (and (= 0 el-job--debug-level)
+         (buffer-live-p buf)
+         (kill-buffer .stderr))
     (setf .busy nil)
     (setf .ready nil)))
 
