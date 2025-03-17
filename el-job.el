@@ -665,13 +665,16 @@ same ID still has the benchmarks table and possibly queued input."
     (cancel-timer .poll-timer)
     (dolist (proc (append .busy .ready))
       (let ((buf (process-buffer proc)))
-        (delete-process proc)
         ;; Why can BUF be nil?  And why is `kill-buffer' so unsafe? can we
         ;; upstream a `kill-buffer-safe' that errors when given nil argument?
         (if (buffer-live-p buf)
-            (when (= 0 el-job--debug-level)
-              (kill-buffer buf))
-          (el-job--dbg 1 "Process had no buffer: %s" proc))))
+            (if (= 0 el-job--debug-level)
+                (kill-buffer buf)
+              ;; Keep the buffer for inspection
+              (delete-process proc))
+          (el-job--dbg 1 "Process had no buffer: %s" proc)
+          ;; Prolly a no-op
+          (delete-process proc))))
     (and (= 0 el-job--debug-level)
          (buffer-live-p .stderr)
          (kill-buffer .stderr))
