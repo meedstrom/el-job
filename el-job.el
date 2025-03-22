@@ -15,7 +15,7 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-;; Author:           Martin Edström <meedstrom91@gmail.com>
+;; Author:           Martin Edström <meedstrom@runbox.eu>
 ;; URL:              https://github.com/meedstrom/el-job
 ;; Created:          2024-10-30
 ;; Keywords:         processes
