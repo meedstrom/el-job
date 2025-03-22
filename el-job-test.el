@@ -1,6 +1,6 @@
 ;;; el-job-test.el --- Test suite -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024-2025 Martin Edström
+;; Copyright (C) 2024-2025 Free Software Foundation, Inc.
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -21,6 +21,7 @@
 (require 'map)
 (require 'cl-lib)
 (require 'el-job)
+(require 'el-job-child)
 
 (ert-deftest el-job--split-optimally ()
   ;; All benchmarks at zero

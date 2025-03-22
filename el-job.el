@@ -1,17 +1,17 @@
 ;;; el-job.el --- Contrived way to call a function using all CPU cores -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2024-2025 Martin Edström
-;;
+;; Copyright (C) 2024-2025 Free Software Foundation, Inc.
+
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
 ;; (at your option) any later version.
-;;
+
 ;; This program is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ;; GNU General Public License for more details.
-;;
+
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program. If not, see <http://www.gnu.org/licenses/>.
 
@@ -46,6 +46,14 @@
 ;; - Command `el-job-kill-all'
 
 ;;; Code:
+
+;; Wish-list:
+;; - Figure out how to use `dump-emacs-portable' after loading any number of
+;;   features so we can reuse that to start the subprocesses instantly.  Could
+;;   even simplify to a sentinel-based workflow then, no polling.
+
+;; - Figure out how to allow more than one list of INPUTS.  That'd let this
+;;   library be applicable to many more situations.
 
 (require 'cl-lib)
 (require 'el-job-child)
@@ -205,7 +213,7 @@ past to pass this item through the FUNCALL-PER-INPUT function specified
 by `el-job-launch'.
 
 Use these benchmarks to rebalance the lists so that each sub-list should
-take around the same amount of wall-time to work through.
+take a similar amount of wall-time to work through.
 
 This reduces the risk that one child takes markedly longer due to
 being saddled with a huge item in addition to the average workload."
@@ -765,20 +773,20 @@ Safely return nil otherwise, whether or not ID is known."
 
 ;;; Ok, don't need to break convention anymore.
 
-(define-obsolete-function-alias 'el-job:id 'el-job-id "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:callback 'el-job-callback "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:n-cores-to-use 'el-job-n-cores-to-use "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:ready 'el-job-ready "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:busy 'el-job-busy "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:stderr 'el-job-stderr "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:timestamps 'el-job-timestamps "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:poll-timer 'el-job-timer "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:finish-times 'el-job-finish-times "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:spawn-args 'el-job-spawn-args "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:past-elapsed 'el-job-past-elapsed "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:queued-inputs 'el-job-queued-inputs "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:input-sets 'el-job-input-sets "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:result-sets 'el-job-result-sets "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:id             #'el-job-id "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:callback       #'el-job-callback "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:n-cores-to-use #'el-job-n-cores-to-use "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:ready          #'el-job-ready "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:busy           #'el-job-busy "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:stderr         #'el-job-stderr "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:timestamps     #'el-job-timestamps "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:poll-timer     #'el-job-timer "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:finish-times   #'el-job-finish-times "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:spawn-args     #'el-job-spawn-args "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:past-elapsed   #'el-job-past-elapsed "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:queued-inputs  #'el-job-queued-inputs "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:input-sets     #'el-job-input-sets "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:result-sets    #'el-job-result-sets "2.3.0 (2025-03-16)")
 
 (provide 'el-job)
 

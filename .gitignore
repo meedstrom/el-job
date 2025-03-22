@@ -1,0 +1,5 @@
+*.elc
+
+# ELPA-generated files.
+el-job-pkg.el
+el-job-autoloads.el
