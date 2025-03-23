@@ -48,12 +48,16 @@
 ;;; Code:
 
 ;; Wish-list:
-;; - Figure out how to use `dump-emacs-portable' after loading any number of
-;;   features so we can reuse that to start the subprocesses instantly.  Could
-;;   even simplify to a sentinel-based workflow then, no polling.
+;; - Figure out how to allow more than one list of INPUTS.  That'd give this
+;;   library much wider applicability!
 
-;; - Figure out how to allow more than one list of INPUTS.  That'd let this
-;;   library be applicable to many more situations.
+;; - Figure out how to use `dump-emacs-portable' after loading all desired
+;;   features, so we can reuse that to start the subprocesses nigh-instantly.
+;;   Could even simplify to a sentinel-based workflow then, no polling.
+
+;; - Improve the error message in some cases when it is unhelpful and only says
+;;   something like "Error running timer: listp Error:".  I surmise the process
+;;   buffer contents are not in a Lisp-readable form then.
 
 (require 'cl-lib)
 (require 'el-job-child)
@@ -773,20 +777,20 @@ Safely return nil otherwise, whether or not ID is known."
 
 ;;; Ok, don't need to break convention anymore.
 
-(define-obsolete-function-alias 'el-job:id             #'el-job-id "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:callback       #'el-job-callback "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:id             #'el-job-id             "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:callback       #'el-job-callback       "2.3.0 (2025-03-16)")
 (define-obsolete-function-alias 'el-job:n-cores-to-use #'el-job-n-cores-to-use "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:ready          #'el-job-ready "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:busy           #'el-job-busy "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:stderr         #'el-job-stderr "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:timestamps     #'el-job-timestamps "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:poll-timer     #'el-job-timer "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:finish-times   #'el-job-finish-times "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:spawn-args     #'el-job-spawn-args "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:past-elapsed   #'el-job-past-elapsed "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:queued-inputs  #'el-job-queued-inputs "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:input-sets     #'el-job-input-sets "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:result-sets    #'el-job-result-sets "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:ready          #'el-job-ready          "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:busy           #'el-job-busy           "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:stderr         #'el-job-stderr         "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:timestamps     #'el-job-timestamps     "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:poll-timer     #'el-job-timer          "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:finish-times   #'el-job-finish-times   "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:spawn-args     #'el-job-spawn-args     "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:past-elapsed   #'el-job-past-elapsed   "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:queued-inputs  #'el-job-queued-inputs  "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:input-sets     #'el-job-input-sets     "2.3.0 (2025-03-16)")
+(define-obsolete-function-alias 'el-job:result-sets    #'el-job-result-sets    "2.3.0 (2025-03-16)")
 
 (provide 'el-job)
 
