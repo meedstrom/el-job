@@ -63,19 +63,14 @@ add that information to the final return value."
         (let (item start output metadata results)
           (when (eq input 'die)
             (throw 'die nil))
-          (if input
-              (while input
-                (setq item (pop input))
-                (setq start (current-time))
-                (setq output (funcall func item))
-                (push (time-since start) metadata)
-                (setq results (el-job-child--zip output results)))
-            ;; A job with nil input.
-            ;; We are the sole subprocess, and we call :funcall-per-inputs
-            ;; a grand total of once, presumably for side effects.
-            ;; REVIEW: Is it even worth keeping this code path?
-            ;;         Probably not.
-            (funcall func nil))
+          (unless input
+            (error "Input must be non-nil"))
+          (while input
+            (setq item (pop input))
+            (setq start (current-time))
+            (setq output (funcall func item))
+            (push (time-since start) metadata)
+            (setq results (el-job-child--zip output results)))
           ;; Ensure the benchmarks are in same order that ITEMS came in,
           ;; letting us associate which with which just by index.
           (setq metadata (nreverse metadata))

@@ -378,10 +378,12 @@ process that locates files \(by inspecting `load-history', via
 
 INPUTS is a list that will be split by up to the output of
 `num-processors', and this determines how many subprocesses will spawn.
-If INPUTS is omitted, only one subprocess will spawn.
 
 INPUTS can also be a function that returns a list.  In this case, the
 function is deferred until needed, possibly saving on compute.
+
+If INPUTS returns nil, do nothing and return the symbol
+`inputs-were-empty'.
 
 
 The subprocesses have no access to current Emacs state.  The only way
@@ -451,29 +453,31 @@ For debugging, see these commands:
               ('wait (setf .queued-inputs (append inputs .queued-inputs))))
           (setf .queued-inputs inputs)
           (setq do-exec t))
-        (when do-exec
-          (setf .callback callback)
-          ;; Prevent spawning a dozen processes when you'll use only one or two
-          (let ((machine-cores (max 1 (1- (num-processors)))))
-            (setf .n-cores-to-use (if (length< .queued-inputs machine-cores)
-                                      (length .queued-inputs)
-                                    machine-cores))
-            (when (or (length< .ready .n-cores-to-use)
-                      (not (cl-every #'process-live-p .ready)))
-              (setq do-respawn t)))
-          (let ((new-spawn-args (list job
-                                      load-features
-                                      inject-vars
-                                      funcall-per-input)))
-            (unless (= (sxhash (cdr .spawn-args))
-                       (sxhash (cdr new-spawn-args)))
-              (setf .spawn-args new-spawn-args)
-              (el-job--dbg 2 "New arguments, resetting processes for %s" id)
-              (setq do-respawn t)))
-          (when do-respawn
-            (el-job--disable job)
-            (apply #'el-job--spawn-processes .spawn-args))
-          (el-job--exec-workload job))))))
+        (if (null .queued-inputs)
+            'inputs-were-empty
+          (when do-exec
+            (setf .callback callback)
+            ;; Prevent spawning a dozen processes when we need only one or two
+            (let ((machine-cores (max 1 (1- (num-processors)))))
+              (setf .n-cores-to-use (if (length< .queued-inputs machine-cores)
+                                        (length .queued-inputs)
+                                      machine-cores))
+              (when (or (length< .ready .n-cores-to-use)
+                        (not (cl-every #'process-live-p .ready)))
+                (setq do-respawn t)))
+            (let ((new-spawn-args (list job
+                                        load-features
+                                        inject-vars
+                                        funcall-per-input)))
+              (unless (= (sxhash (cdr .spawn-args))
+                         (sxhash (cdr new-spawn-args)))
+                (setf .spawn-args new-spawn-args)
+                (el-job--dbg 2 "New arguments, resetting processes for %s" id)
+                (setq do-respawn t)))
+            (when do-respawn
+              (el-job--disable job)
+              (apply #'el-job--spawn-processes .spawn-args))
+            (el-job--exec-workload job)))))))
 
 (defvar-local el-job-here nil)
 (defun el-job--spawn-processes (job load-features inject-vars funcall-per-input)
