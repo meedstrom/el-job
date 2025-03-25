@@ -55,10 +55,6 @@
 ;;   features, so we can reuse that to start the subprocesses nigh-instantly.
 ;;   Could even simplify to a sentinel-based workflow then, no polling.
 
-;; - Improve the error message in some cases when it is unhelpful and only says
-;;   something like "Error running timer: listp Error:".  I surmise the process
-;;   buffer contents are not in a Lisp-readable form then.
-
 (require 'cl-lib)
 (require 'el-job-child)
 
@@ -654,12 +650,10 @@ more input in the queue."
                             (setq durations (cdar output))
                             (setq results (cdr output)))
         (( error )
-         (el-job--unhide-buffer .stderr)
          (dolist (proc (append .busy .ready))
-           (el-job--unhide-buffer (process-buffer proc))
            (delete-process proc))
-         (error "In buffer %s: problems reading child output: %S"
-                (current-buffer) err)))
+         (error "In buffer %s: problems reading child output: %s"
+                (current-buffer) (buffer-string))))
       (push finish-time .finish-times)
       (setf .busy (delq proc .busy))
       (push proc .ready)
@@ -707,11 +701,6 @@ same ID still has the benchmarks table and possibly queued input."
          (kill-buffer .stderr))
     (setf .busy nil)
     (setf .ready nil)))
-
-(defun el-job--unhide-buffer (buffer)
-  "Rename BUFFER to omit initial space, and return the new name."
-  (with-current-buffer buffer
-    (rename-buffer (string-trim-left (buffer-name)))))
 
 
 ;;; Tools / public API
