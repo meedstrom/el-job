@@ -267,7 +267,8 @@ being saddled with a huge item in addition to the average workload."
                     (setq this-sublist nil)
                     (push item items)))))))
         (if (length= sublists 0)
-            (progn ;; Degrade gracefully
+            (progn
+              ;; Degrade gracefully (but I think we never arrive here)
               (fset 'el-job--split-optimally #'el-job--split-evenly)
               (cl-assert (not (length= sublists 0))))
           ;; Spread leftovers equally
@@ -628,6 +629,7 @@ after a short delay.  N is the count of checks done so far."
       (el-job--disable job)
       (el-job--dbg 2 "Reaped idle processes for %s" (el-job-id job)))))
 
+;; TODO: Consider using `with-local-quit', because this fires on a timer
 (defun el-job--handle-output ()
   "Handle output in current buffer.
 
