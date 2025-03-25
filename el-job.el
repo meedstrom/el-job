@@ -645,10 +645,10 @@ more input in the queue."
     (el-job--with job
         ( .busy .ready .input-sets .past-elapsed .result-sets .stderr
           .queued-inputs .timestamps .id .finish-times .callback )
-      (condition-case err (let ((output (read (buffer-string))))
-                            (setq finish-time (caar output))
-                            (setq durations (cdar output))
-                            (setq results (cdr output)))
+      (condition-case _ (let ((output (read (buffer-string))))
+                          (setq finish-time (caar output))
+                          (setq durations (cdar output))
+                          (setq results (cdr output)))
         (( error )
          (dolist (proc (append .busy .ready))
            (delete-process proc))
