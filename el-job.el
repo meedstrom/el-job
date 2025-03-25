@@ -587,10 +587,10 @@ should trigger `el-job--handle-output'."
 
 ;; So, poll.  We do a chain of timers that successively ups the delay.
 ;; To see what the delays would be, eval:
-;; (--map (/ it (float (ash 1 5))) (-iterate '1+ 1 42))
+;; (--map (/ it 32.0) (-iterate '1+ 1 42))
 
 ;; And to see the cumulative sums:
-;; (-reductions '+ (--map (/ it (float (ash 1 5))) (-iterate '1+ 1 42)))
+;; (-reductions '+ (--map (/ it 32.0) (-iterate '1+ 1 42)))
 
 ;; As you can see, we do 7 polls inside the first second,
 ;; but spread out the last 7 polls between T=20s and T=30s.
@@ -614,7 +614,7 @@ after a short delay.  N is the count of checks done so far."
           (if (<= n 42)
               (setf (el-job-timer el-job-here)
                     (run-with-timer
-                     (/ n (float (ash 1 5))) nil #'el-job--poll (1+ n) busy-bufs))
+                     (/ n 32.0) nil #'el-job--poll (1+ n) busy-bufs))
             (el-job--disable el-job-here)
             (message "el-job: Timed out, was busy for 30+ seconds: %s"
                      (el-job-id el-job-here)))
