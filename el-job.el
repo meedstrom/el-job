@@ -107,7 +107,11 @@ an .eln anyway, without your having to recompile on save."
                      when (and (consp elem)
                                (eq 'defun (car elem))
                                (symbolp (cdr elem))
-                               (subrp (symbol-function (cdr elem))))
+                               (subrp (symbol-function (cdr elem)))
+                               ;; Extra safety (sometimes files contain a patch
+                               ;; overriding some other file's definition)
+                               (string-prefix-p (symbol-name feature)
+                                                (symbol-name (cdr elem))))
                      return (native-comp-unit-file
                              (subr-native-comp-unit
                               (symbol-function (cdr elem))))))
