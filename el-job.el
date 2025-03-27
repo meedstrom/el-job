@@ -112,9 +112,14 @@ an .eln anyway, without your having to recompile on save."
                                ;; overriding some other file's definition)
                                (string-prefix-p (symbol-name feature)
                                                 (symbol-name (cdr elem))))
-                     return (native-comp-unit-file
-                             (subr-native-comp-unit
-                              (symbol-function (cdr elem))))))
+                     return (let ((eln (native-comp-unit-file
+                                        (subr-native-comp-unit
+                                         (symbol-function (cdr elem))))))
+                              ;; FIXME: comp sometimes deletes old eln during
+                              ;; recompilation, but does not load the new eln,
+                              ;; at least not in a way that updates load-history
+                              (when (file-exists-p eln)
+                                eln))))
        file)))
 
 (defvar el-job--onetime-canary nil)
