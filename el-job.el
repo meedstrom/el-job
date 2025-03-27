@@ -71,14 +71,12 @@
   "Increase this to 1 or 2 to see more debug messages.")
 
 (defun el-job--dbg (level fmt &rest args)
-  "If debugging is enabled, format FMT with ARGS and print as message.
-LEVEL is the threshold for `el-job--debug-level' to unlock this warning.
-At LEVEL 0, don't just print a message, display a warning."
+  "Maybe pass FMT and ARGS to `message'.
+LEVEL is the threshold that `el-job--debug-level' should meet or exceed
+to unlock this message."
   (declare (indent 2))
-  (if (<= level el-job--debug-level)
-      (if (> level 0)
-          (apply #'message fmt args)
-        (display-warning 'el-job (apply #'format-message fmt args)))))
+  (when (<= level el-job--debug-level)
+    (apply #'message fmt args)))
 
 (defun el-job--locate-lib-in-load-history (feature)
   "Look for the .eln, .elc or .el file corresponding to FEATURE.
@@ -138,7 +136,7 @@ that file of source code and use \\[eval-buffer] to ensure this will
 find the correct file."
   (let ((loaded (el-job--locate-lib-in-load-history feature)))
     (unless loaded
-      (error "Current Lisp definitions must come from a file %S[.el/.elc/.eln]"
+      (error "el-job: Current Lisp definitions must come from a file %S[.el/.elc/.eln]"
              feature))
     ;; HACK: Sometimes comp.el makes freefn- temp files.  It sounds like we
     ;; would not normally see it unless user is evalling defuns in a scratch
@@ -147,7 +145,7 @@ find the correct file."
     (when (string-search "freefn-" loaded)
       (unless el-job--onetime-canary
         (setq el-job--onetime-canary t)
-        (error "Could not find real file for feature %S, found %s"
+        (error "el-job: Could not find real file for feature %S, found %s"
                feature loaded))
       (setq loaded
             (locate-file (symbol-name feature) load-path '(".el" ".el.gz"))))
@@ -169,17 +167,18 @@ find the correct file."
                    (byte-compile-dest-file-function
                     `(lambda (&rest _) ,elc)))
               (when (native-comp-available-p)
-                ;; FIXME: Guix strips the hash from the .eln filename, so
-                ;; compiling now can result in an .eln in ~/.emacs.d/ that will
-                ;; always take precedence over the one shipped by Guix.
-                ;; If we want to cover for that, it'd be safer to compile into
-                ;; /tmp with a filename based on e.g. `after-init-time'.
-                ;; Users who install FEATURE purely thru Guix are prolly safe.
+                ;; FIXME: Guix overrides `comp-el-to-eln-rel-filename' to
+                ;; output filenames with NO HASH!  So compiling now can result
+                ;; in an .eln in ~/.emacs.d/ that will always take precedence
+                ;; over the one shipped by Guix.  If we want to cover for that,
+                ;; it'd be safer to compile into /tmp with a filename based on
+                ;; e.g. `after-init-time'.  Users who install FEATURE purely
+                ;; thru Guix are prolly safe.
                 ;; https://github.com/meedstrom/org-node/issues/68
                 (native-compile-async (list loaded)))
               ;; Native comp may take a while, so build and return .elc this
-              ;; time.  We should not pick a preexisting .elc from load path if
-              ;; Emacs is now running interpreted code, since that currently
+              ;; time.  We should not pick a preexisting .elc from `load-path'
+              ;; if Emacs is now running interpreted code, since that currently
               ;; running code is likely newer.
               (if (or (file-newer-than-file-p elc loaded)
                       (byte-compile-file loaded))
@@ -191,10 +190,11 @@ find the correct file."
                 loaded)))
       ;; Either .eln or .elc was loaded, so return the same.
       ;; We should not opportunistically build an .eln if current Emacs process
-      ;; is using code from an .elc, because we cannot assume the source .el is
-      ;; equivalent code.  It could be in-development, newer than the .elc,
-      ;; so children should also use the .elc for compatibility right up until
-      ;; the point the developer actually evals the .el buffer.
+      ;; is using an .elc, because we cannot assume the source .el is the
+      ;; version that produced that .elc.  It could be in-development, newer
+      ;; than the .elc, so our child processes should also use the .elc for
+      ;; compatibility right up until the point the developer actually evals
+      ;; the .el buffer.
       loaded)))
 
 (defun el-job--split-evenly (big-list n &optional _)
@@ -444,10 +444,10 @@ For debugging, see these commands:
                         .spawn-args .callback .timestamps )
       (unless (and .busy (eq if-busy 'noop))
         (plist-put .timestamps :launched (current-time))
-        ;; TODO: Can we somehow defer this to even later?
-        ;;       Maybe if-busy=wait could inhibit funcalling it?
-        ;;       In fact, if we mandate that it be a function,
-        ;;       might be able to get rid of the concept of queued-inputs.
+        ;; REVIEW: Can we somehow defer this to even later?
+        ;;         Maybe if-busy=wait could inhibit funcalling it?
+        ;;         In fact, if we mandate that `inputs' be a function,
+        ;;         might be able to get rid of the concept of queued-inputs.
         (when (functionp inputs)
           (setq inputs (funcall inputs)))
         (if .busy
@@ -564,7 +564,7 @@ should trigger `el-job--handle-output'."
                                            .past-elapsed))
           busy-bufs)
       (unless (length< splits (1+ (length .ready)))
-        (error "Items split in %d lists, but only %d ready processes"
+        (error "el-job: Items split in %d lists, but only %d ready processes"
                (length splits) (length .ready)))
       (let ((print-length nil)
             (print-level nil)
@@ -695,7 +695,7 @@ same ID still has the benchmarks table and possibly queued input."
     (cancel-timer .timer)
     (dolist (proc (append .busy .ready))
       (let ((buf (process-buffer proc)))
-        ;; Why can BUF be nil?  And why is `kill-buffer' so unsafe? can we
+        ;; Why can BUF be nil?  And why is `kill-buffer' so unsafe?  Can we
         ;; upstream a `kill-buffer-safe' that errors when given nil argument?
         (if (buffer-live-p buf)
             (if (= 0 el-job--debug-level)
@@ -727,25 +727,25 @@ Tip: you can also inspect the contents of the process buffers.
 Use \\[el-job-cycle-debug-level] so the debug level is 1+, then look
 for buffer names starting with \" *el-job\" - note leading space."
   (interactive)
-  (let* ((id (intern (completing-read "Get info on job: " el-job--all-jobs)))
-         (job (gethash id el-job--all-jobs))
-         (print-function
-          (if (y-or-n-p "Pretty-print with `cl-prin1' (choose no if slow)? ")
-              (if (y-or-n-p "Print with `pp' (even prettier)? ")
-                  'pp
-                'cl-prin1)
-            'prin1)))
-    (when job
-      (set-buffer (get-buffer-create "*el-job debug info*" t))
-      (so-long-mode)
-      (let ((inhibit-read-only t))
-        (erase-buffer)
-        (funcall print-function job (current-buffer)))
-      (switch-to-buffer (current-buffer))
-      (when (eq print-function 'prin1)
-        (message "Tip: See definition of the `el-job' struct
-for which order the fields come in.
-For example, the first field is ID, second is CALLBACK etc.")))))
+  (when-let*
+      ((id (intern (completing-read "Get info on job: " el-job--all-jobs)))
+       (job (gethash id el-job--all-jobs))
+       (print-function
+        (if (y-or-n-p "Pretty-print with `cl-prin1' (choose no if slow)? ")
+            (if (y-or-n-p "Print with `pp' (even prettier)? ")
+                'pp
+              'cl-prin1)
+          'prin1)))
+    (set-buffer (get-buffer-create "*el-job debug info*" t))
+    (so-long-mode)
+    (let ((inhibit-read-only t))
+      (erase-buffer)
+      (funcall print-function job (current-buffer)))
+    (switch-to-buffer (current-buffer))
+    (when (eq print-function 'prin1)
+      (message "Tip: Type C-h o el-job RET
+     to look up which order these fields come in.
+     For example, first field is ID, second is CALLBACK etc."))))
 
 (defun el-job-kill-all ()
   "Kill all el-job--all-jobs ever registered and forget metadata."
