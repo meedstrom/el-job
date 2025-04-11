@@ -54,4 +54,30 @@
     (should (= 5 (length (el-job--split-optimally (take 5 items) 15 tiny-table))))
     (should (= 5 (length (el-job--split-optimally (take 5 items) 15 empty-table))))))
 
+(ert-deftest el-job--ensure-compiled-lib ()
+  (when (and (require 'comp nil t)
+             (boundp 'comp-async-compilations)
+             (hash-table-p comp-async-compilations)
+             (fboundp #'comp-lookup-eln))
+    (let (skip-test)
+      (let ((loaded (el-job--locate-lib-in-load-history
+                     'el-job-child)))
+        (when (string-suffix-p ".el" loaded)
+          (setq loaded (comp-lookup-eln loaded)))
+        (when (and loaded (string-suffix-p ".eln" loaded))
+          (condition-case _
+              (delete-file loaded)
+            (file-error (setq skip-test t)))))
+      (unless skip-test
+        (load (locate-library "el-job-child.el"))
+        (should (string-suffix-p ".el" (el-job--locate-lib-in-load-history
+                                        'el-job-child)))
+        (should (string-suffix-p ".elc" (el-job--ensure-compiled-lib
+                                         'el-job-child)))
+        (when (let ((procs (hash-table-values comp-async-compilations)))
+                (not (el-job--sit-until-nil-p
+                      (cl-some #'process-live-p procs) 10)))
+          (should (string-suffix-p ".eln" (el-job--ensure-compiled-lib
+                                           'el-job-child))))))))
+
 ;;; el-job-test.el ends here
