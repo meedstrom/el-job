@@ -109,7 +109,7 @@ an .eln anyway, without your having to recompile on save."
                                ;; Extra safety (sometimes files contain a patch
                                ;; overriding some other file's definition)
                                (string-prefix-p (symbol-name feature)
-                                                (symbol-name (cdr elem))))
+                                                (file-name-nondirectory file)))
                      return (let ((eln (native-comp-unit-file
                                         (subr-native-comp-unit
                                          (symbol-function (cdr elem))))))
