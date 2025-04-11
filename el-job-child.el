@@ -90,3 +90,9 @@ add that information to the final return value."
 (provide 'el-job-child)
 
 ;;; el-job-child.el ends here
+
+;; Local Variables:
+;; checkdoc-spellcheck-documentation-flag: nil
+;; checkdoc-verb-check-experimental-flag: nil
+;; emacs-lisp-docstring-fill-column: 72
+;; End:

@@ -19,6 +19,7 @@
 
 (require 'ert)
 (require 'map)
+(require 'subr-x)
 (require 'cl-lib)
 (require 'el-job-child)
 (require 'el-job)
@@ -56,6 +57,7 @@
 
 (ert-deftest el-job--ensure-compiled-lib ()
   (when (and (require 'comp nil t)
+             (native-comp-available-p)
              (boundp 'comp-async-compilations)
              (hash-table-p comp-async-compilations)
              (fboundp #'comp-lookup-eln))

@@ -819,3 +819,9 @@ Safely return nil otherwise, whether or not ID is known."
 (provide 'el-job)
 
 ;;; el-job.el ends here
+
+;; Local Variables:
+;; checkdoc-spellcheck-documentation-flag: nil
+;; checkdoc-verb-check-experimental-flag: nil
+;; emacs-lisp-docstring-fill-column: 72
+;; End:
