@@ -757,6 +757,30 @@ for buffer names starting with \" *el-job\" - note leading space."
              (remhash id el-job--all-jobs))
            el-job--all-jobs))
 
+(defmacro el-job--sit-until-nil-p (test max-secs &optional message)
+  "Block until form TEST evaluates to nil, or time MAX-SECS has elapsed.
+Either way, return the last TEST result, i.e. non-nil if timed out.
+
+While blocking input, keep MESSAGE visible in the echo area.
+MESSAGE can be a string, or a form that evaluates to a string.
+
+Neither TEST nor MESSAGE should be expensive forms, since they are
+evaluated rapidly and cannot themselves trigger the time-out.
+A typical TEST would check if something in the environment has changed."
+  (let ((deadline (gensym "deadline"))
+        (last (gensym "last")))
+    `(let ((,deadline (time-add (current-time) ,max-secs))
+           ,last)
+       (catch 'timeout
+         (while (setq ,last ,test)
+           (unless (time-less-p (current-time) ,deadline)
+             (throw 'timeout nil))
+           ,(when message `(unless (current-message)
+                             (message "%s" ,message)))
+           (discard-input)
+           (sit-for 0.1)))
+       ,last)))
+
 (defun el-job-await (id max-secs &optional message)
   "Block until all processes for job ID finished, then return t.
 
@@ -764,15 +788,7 @@ If the job has still not finished after MAX-SECS seconds, stop
 blocking and return nil.
 
 Meanwhile, ensure string MESSAGE is visible in the minibuffer."
-  (let ((deadline (time-add (current-time) max-secs)))
-    (catch 'timeout
-      (while (el-job-is-busy id)
-        (discard-input)
-        (if (time-less-p (current-time) deadline)
-            (progn (unless (current-message) (message message))
-                   (sit-for 0.1))
-          (throw 'timeout nil)))
-      t)))
+  (not (el-job--sit-until-nil-p (el-job-is-busy id) max-secs message)))
 
 (defun el-job-is-busy (id)
   "Return list of busy processes for job ID, if any.
