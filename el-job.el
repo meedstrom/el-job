@@ -35,7 +35,7 @@
 ;; You need to know the concept of a callback.
 
 ;; Public API:
-;; - Function `el-job-launch' (read its docstring)
+;; - Function `el-job-launch' (main entry point)
 ;; - Function `el-job-await'
 ;; - Function `el-job-is-busy'
 ;; - Variable `el-job-major-version'
@@ -115,7 +115,9 @@ an .eln anyway, without your having to recompile on save."
                                          (symbol-function (cdr elem))))))
                               ;; FIXME: comp sometimes deletes old eln during
                               ;; recompilation, but does not load the new eln,
-                              ;; at least not in a way that updates load-history
+                              ;; at least not in a way that updates
+                              ;; `load-history'.  Current workaround is return
+                              ;; nil, ie fall back on FILE; not ideal.
                               (when (file-exists-p eln)
                                 eln))))
        file)))
@@ -748,7 +750,7 @@ for buffer names starting with \" *el-job\" - note leading space."
      For example, first field is ID, second is CALLBACK etc."))))
 
 (defun el-job-kill-all ()
-  "Kill all el-job--all-jobs ever registered and forget metadata."
+  "Kill all el-jobs ever registered and forget metadata."
   (interactive)
   (maphash (lambda (id job)
              (el-job--disable job)
@@ -775,6 +777,8 @@ Meanwhile, ensure string MESSAGE is visible in the minibuffer."
 (defun el-job-is-busy (id)
   "Return list of busy processes for job ID, if any.
 Safely return nil otherwise, whether or not ID is known."
+  (when (el-job-p id)
+    (error "el-job-is-busy: Passed a job object, but expected only an ID"))
   (let ((job (gethash id el-job--all-jobs)))
     (and job (el-job-busy job))))
 

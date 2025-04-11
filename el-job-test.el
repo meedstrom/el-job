@@ -20,8 +20,8 @@
 (require 'ert)
 (require 'map)
 (require 'cl-lib)
-(require 'el-job)
 (require 'el-job-child)
+(require 'el-job)
 
 (ert-deftest el-job--split-optimally ()
   ;; All benchmarks at zero
