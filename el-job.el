@@ -481,10 +481,12 @@ For debugging, see these commands:
                 (setf .spawn-args new-spawn-args)
                 (el-job--dbg 2 "New arguments, resetting processes for %s" id)
                 (setq do-respawn t)))
-            (when do-respawn
-              (el-job--disable job)
-              (apply #'el-job--spawn-processes .spawn-args))
-            (el-job--exec-workload job)))))))
+            (let ((error-maybe
+                   (when do-respawn
+                     (el-job--disable job)
+                     (apply #'el-job--spawn-processes .spawn-args))))
+              (unless error-maybe
+                (el-job--exec-workload job)))))))))
 
 (defvar-local el-job-here nil)
 (defun el-job--spawn-processes (job load-features inject-vars funcall-per-input)
@@ -513,7 +515,8 @@ see `el-job-launch'."
            "--eval" (format "(el-job-child--work #'%S)" funcall-per-input)))
          ;; Ensure the working directory is not remote.
          ;; https://github.com/meedstrom/org-node/issues/46
-         (default-directory invocation-directory))
+         (default-directory invocation-directory)
+         return-value)
     (el-job--with job (.stderr .id .ready .spawn-args .n-cores-to-use)
       (setf .stderr
             (with-current-buffer
@@ -546,7 +549,12 @@ see `el-job-launch'."
         ;; https://github.com/meedstrom/org-node/issues/75
         (( file-error )
          (el-job--disable job)
-         (el-job--dbg 1 "el-job: Terminated job because of: %S" err))))))
+         (el-job--dbg 1 "el-job: Terminated job because of: %S" err)
+         (setq return-value err)))
+      ;; Return non-nil on error, so caller can choose to fail quietly.
+      ;; We suppressed the error signal because for some users, it only occurs
+      ;; intermittently and does not break things.
+      return-value)))
 
 (defun el-job--exec-workload (job)
   "Split the queued inputs in JOB and pass to all children.
