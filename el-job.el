@@ -74,9 +74,9 @@
   "Maybe pass FMT and ARGS to `message'.
 LEVEL is the threshold that `el-job--debug-level' should meet or exceed
 to unlock this message."
-  (declare (indent 2))
+  (declare (indent 1))
   (when (<= level el-job--debug-level)
-    (apply #'message fmt args)))
+    (apply #'message (concat "el-job: " fmt) args)))
 
 (defun el-job--locate-lib-in-load-history (feature)
   "Look for the .eln, .elc or .el file corresponding to FEATURE.
@@ -549,7 +549,7 @@ see `el-job-launch'."
         ;; https://github.com/meedstrom/org-node/issues/75
         (( file-error )
          (el-job--disable job)
-         (el-job--dbg 1 "el-job: Terminated job because of: %S" err)
+         (el-job--dbg 1 "Terminated job because of: %S" err)
          (setq return-value err)))
       ;; Return non-nil on error, so caller can choose to fail quietly.
       ;; We suppressed the error signal because for some users, it only occurs
@@ -652,15 +652,16 @@ after a short delay.  N is the count of checks done so far."
       (el-job--disable job)
       (el-job--dbg 2 "Reaped idle processes for %s" (el-job-id job)))))
 
-;; TODO: Consider using `with-local-quit', because this fires on a timer
+;; TODO: Consider using `with-local-quit' because this fires on a timer, which
+;;       means `inhibit-quit' is t, but it'd be good to allow quitting out of a
+;;       hung or long-running CALLBACK function.
 (defun el-job--handle-output ()
   "Handle output in current buffer.
 
 If this is the last output for the job, merge all outputs, maybe execute
 the callback function, finally maybe run the job again if there is now
 more input in the queue."
-  (let ((inhibit-quit t)
-        (proc (get-buffer-process (current-buffer)))
+  (let ((proc (get-buffer-process (current-buffer)))
         (job el-job-here)
         finish-time
         durations
