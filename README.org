@@ -42,27 +42,35 @@ the default one.  It is reimplemented in native code, reducing GC churn.
 To undo this change, set 'fast-read-process-output' to nil.
 #+end_src
 
-** News 2.1.0
+
+** News 2.4
+- Jobs must now have =:inputs=.  If =:inputs= nil and there was nothing queued, =el-job-launch= will no-op and return the symbol =inputs-were-empty=.
+
+** News 2.3
+- Some renames to follow Elisp convention
+  - =el-job:timestamps= and friends now =el-job-timestamps=.
+
+** News 2.1
 - DROP SUPPORT Emacs 28
   - It likely has not been working for a while anyway.  Maybe works on the [[https://github.com/meedstrom/el-job/tree/v0.3][v0.3 branch]], from 0.3.26+.
 
-** News 2.0.0
+** News 2.0
 - Jobs must now have =:id= (no more anonymous jobs).
 - Pruned many code paths.
 
-** News 1.1.0
+** News 1.1
 - Changed internals so that all builds of Emacs can be expected to perform similarly well.
 
-** News 1.0.0
+** News 1.0
 - No longer keeps processes alive forever.  All jobs are kept alive for up to 30 seconds of disuse, then reaped.
 - Pruned many code paths.
 - Many arguments changed, and a few were removed.  Consult the docstring of =el-job-launch= again.
 
 ** Limitations
 
-2. The return value from the =:funcall-per-input= function must always be a list with a fixed length, where the elements are also lists.
+1. The return value from the =:funcall-per-input= function must always be a list with a fixed length, where the elements are also lists.
 
-   For example, org-node passes =:funcall-per-input #'org-node-parser--scan-file= to el-job, and if you look in [[https://github.com/meedstrom/org-node/blob/main/org-node-parser.el][org-node-parser.el]] for the defun of =org-node-parser--scan-file=, this is its final return value:
+   For example, org-node passes =:funcall-per-input #'org-node-parser--scan-file= to el-job, and if you look in [[https://github.com/meedstrom/org-node/blob/main/org-node-parser.el][org-node-parser.el]] for the defun of =org-node-parser--scan-file=, it always returns a list of 6 items:
 
    #+begin_src elisp
    (list (if missing-file (list missing-file)) ; List of 0 or 1 item
@@ -73,10 +81,10 @@ To undo this change, set 'fast-read-process-output' to nil.
          (if problem (list problem))))         ; List of 0 or 1 item
    #+end_src
 
-   It may seem clunky to return lists of only one item, but you could consider it a minor expense in exchange for simpler library code.
+   It may look clunky to return sub-lists of only one item, but you could consider it a minor expense in exchange for simpler library code.
 
-3. Some data types cannot be exchanged with the children: those whose printed form look like =#<...>=.  For example, =#<buffer notes.org>=, =#<obarray n=94311>=, =#<marker at 3102 in README.org>=.
+2. Some data types cannot be exchanged with the children: those whose printed form look like =#<...>=.  For example, =#<buffer notes.org>=, =#<obarray n=94311>=, =#<marker at 3102 in README.org>=.
 
    IIUC, this sort of data only has meaning within the current process -- so even if you could send it, it would not be usable by the recipient anyway.
 
-   In days past, hash tables also looked like that when printed, but not since Emacs 25 or so: they now look like =#s(hash-table data ...)=, which works fine to read back.
+3. For now, this library tends to be applicable only to a narrow set of use-cases, since you can only pass one =:inputs= list which would tend to contain a single kind of thing, e.g. it could be a list of files to visit, to be split between child processes.  In many potential use-cases, you'd actually want multiple input lists and split them differently, and that's not supported yet.

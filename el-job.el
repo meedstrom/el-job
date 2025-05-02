@@ -115,9 +115,10 @@ an .eln anyway, without your having to recompile on save."
                                          (symbol-function (cdr elem))))))
                               ;; FIXME: comp sometimes deletes old eln during
                               ;; recompilation, but does not load the new eln,
-                              ;; at least not in a way that updates
-                              ;; `load-history'.  Current workaround is return
-                              ;; nil, ie fall back on FILE; not ideal.
+                              ;; at least not in a way that updates the
+                              ;; `native-comp-unit-file'.  Current workaround
+                              ;; is return nil, ie fall back on FILE; not
+                              ;; ideal.
                               (when (file-exists-p eln)
                                 eln))))
        file)))
@@ -170,7 +171,7 @@ find the correct file."
                     `(lambda (&rest _) ,elc)))
               (when (native-comp-available-p)
                 ;; FIXME: Guix overrides `comp-el-to-eln-rel-filename' to
-                ;; output filenames with NO HASH!  So compiling now can result
+                ;; output filenames with no hash!  So compiling now can result
                 ;; in an .eln in ~/.emacs.d/ that will always take precedence
                 ;; over the one shipped by Guix.  If we want to cover for that,
                 ;; it'd be safer to compile into /tmp with a filename based on
@@ -180,7 +181,7 @@ find the correct file."
                 (native-compile-async (list loaded)))
               ;; Native comp may take a while, so build and return .elc this
               ;; time.  We should not pick a preexisting .elc from `load-path'
-              ;; if Emacs is now running interpreted code, since that currently
+              ;; if Emacs is running interpreted code now, since that currently
               ;; running code is likely newer.
               (if (or (file-newer-than-file-p elc loaded)
                       (byte-compile-file loaded))
@@ -382,6 +383,8 @@ The subprocesses do not inherit `load-path', it is the current Emacs
 process that locates files \(by inspecting `load-history', via
 `el-job--ensure-compiled-lib'), then gives them to each subprocess.
 
+Tip: To let them inherit `load-path' anyway, add it to INJECT-VARS.
+
 
 INPUTS is a list that will be split by up to the output of
 `num-processors', and this determines how many subprocesses will spawn.
@@ -395,7 +398,8 @@ If INPUTS returns nil, do nothing and return the symbol
 
 The subprocesses have no access to current Emacs state.  The only way
 they can affect current state, is if FUNCALL-PER-INPUT returns data,
-which is then handled by CALLBACK function in the current Emacs.
+which is then handled by CALLBACK function in the current Emacs, as
+described earlier.
 
 Emacs stays responsive to user input up until all subprocesses finish,
 which is when their results are merged and CALLBACK is executed.
@@ -698,6 +702,11 @@ more input in the queue."
         ;; Somehow, it took 700 lines of code to get here.
         (when .callback
           (funcall .callback (el-job--zip-all .result-sets) job))
+        ;; REVIEW: Either
+        ;; 1. get rid of this code path (see comments in `el-job-launch' re.
+        ;;    queued inputs); or
+        ;; 2. consider if we need to check length of .queued-inputs to maybe
+        ;;    respawn all processes (see what `el-job-launch' does).
         (when .queued-inputs
           (el-job--exec-workload job))))))
 
