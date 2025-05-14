@@ -656,9 +656,8 @@ after a short delay.  N is the count of checks done so far."
       (el-job--disable job)
       (el-job--dbg 2 "Reaped idle processes for %s" (el-job-id job)))))
 
-;; TODO: Consider using `with-local-quit' because this fires on a timer, which
-;;       means `inhibit-quit' is t, but it'd be good to allow quitting out of a
-;;       hung or long-running CALLBACK function.
+;; TODO: Consider setting `inhibit-quit' to nil or whatever is needed to let
+;;       us edebug the callback
 (defun el-job--handle-output ()
   "Handle output in current buffer.
 
@@ -701,7 +700,9 @@ more input in the queue."
         ;; Finally the purpose of it all.
         ;; Somehow, it took 700 lines of code to get here.
         (when .callback
-          (funcall .callback (el-job--zip-all .result-sets) job))
+          ;; Allow quitting out of a hung or slow CALLBACK.
+          (with-local-quit
+            (funcall .callback (el-job--zip-all .result-sets) job)))
         ;; REVIEW: Either
         ;; 1. get rid of this code path (see comments in `el-job-launch' re.
         ;;    queued inputs); or
