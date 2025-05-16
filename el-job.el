@@ -93,6 +93,7 @@ See wrapper `el-job--ensure-compiled-lib' for a convenient way to return
 an .eln anyway, without your having to recompile on save."
   (cl-loop
    for (file . elems) in load-history
+   ;; FIXME: If a file has more than one `provide', this only finds the first.
    when (eq feature (cdr (assq 'provide elems)))
    return
    ;; Look for a natively-compiled function supposedly defined in FILE.
