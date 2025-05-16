@@ -623,31 +623,33 @@ should trigger `el-job--handle-output'."
 For each where it is complete, handle it.  For the rest, check again
 after a short delay.  N is the count of checks done so far."
   (cl-assert (not (null bufs)))
-  (let (busy-bufs)
-    (save-current-buffer
-      (dolist (buf bufs)
-        (if (not (buffer-live-p buf))
-            (el-job--dbg 2 "Dead process buffer (this may be normal)")
-          (set-buffer buf)
-          (if (eq (char-before) ?\n)
-              (el-job--handle-output)
-            (push buf busy-bufs))))
-      (cl-assert el-job-here)
-      (when (member (el-job-timer el-job-here) timer-list)
-        ;; It does, somehow, happen
-        ;; https://github.com/meedstrom/org-node/issues/94
-        (el-job--dbg 1 "Timer still active (this is a bug), recovering")
-        (cancel-timer (el-job-timer el-job-here)))
-      (if busy-bufs
-          (if (<= n 42)
-              (setf (el-job-timer el-job-here)
-                    (run-with-timer
-                     (/ n 32.0) nil #'el-job--poll (1+ n) busy-bufs))
-            (el-job--disable el-job-here)
-            (el-job--dbg 0 "Timed out, was busy for 30+ seconds: %s"
-                         (el-job-id el-job-here)))
-        (setf (el-job-timer el-job-here)
-              (run-with-timer 30 nil #'el-job--reap (current-buffer)))))))
+  (if (cl-notany #'buffer-live-p bufs)
+      (el-job--dbg 0 "No process buffers alive when `el-job--poll' called")
+    (let (busy-bufs)
+      (save-current-buffer
+        (dolist (buf bufs)
+          (if (not (buffer-live-p buf))
+              (el-job--dbg 2 "Dead process buffer (this may be normal)")
+            (set-buffer buf)
+            (if (eq (char-before) ?\n)
+                (el-job--handle-output)
+              (push buf busy-bufs))))
+        (cl-assert el-job-here)
+        (when (member (el-job-timer el-job-here) timer-list)
+          ;; It does, somehow, happen
+          ;; https://github.com/meedstrom/org-node/issues/94
+          (el-job--dbg 1 "Timer still active (this is a bug), recovering")
+          (cancel-timer (el-job-timer el-job-here)))
+        (if busy-bufs
+            (if (<= n 42)
+                (setf (el-job-timer el-job-here)
+                      (run-with-timer
+                       (/ n 32.0) nil #'el-job--poll (1+ n) busy-bufs))
+              (el-job--disable el-job-here)
+              (el-job--dbg 0 "Timed out, was busy for 30+ seconds: %s"
+                           (el-job-id el-job-here)))
+          (setf (el-job-timer el-job-here)
+                (run-with-timer 30 nil #'el-job--reap (current-buffer))))))))
 
 (defun el-job--reap (buf)
   "If BUF is still alive, kill processes in the job associated with it."
