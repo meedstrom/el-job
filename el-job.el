@@ -309,7 +309,7 @@ Cf. `with-slots' in the \"eieio\" library, or `let-alist'.
 
 For clarity inside BODY, each symbol name in SLOTS must be prepended
 with one character of your choosing, such as a dot."
-  (declare (indent 2))
+  (declare (indent 2) (debug (sexp sexp &rest form)))
   `(cl-symbol-macrolet
        ,(cl-loop
          for slot in slots
