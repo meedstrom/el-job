@@ -633,6 +633,11 @@ after a short delay.  N is the count of checks done so far."
               (el-job--handle-output)
             (push buf busy-bufs))))
       (cl-assert el-job-here)
+      (when (member (el-job-timer el-job-here) timer-list)
+        ;; It does, somehow, happen
+        ;; https://github.com/meedstrom/org-node/issues/94
+        (el-job--dbg 1 "Timer still active (this is a bug), recovering")
+        (cancel-timer (el-job-timer el-job-here)))
       (if busy-bufs
           (if (<= n 42)
               (setf (el-job-timer el-job-here)
@@ -641,11 +646,6 @@ after a short delay.  N is the count of checks done so far."
             (el-job--disable el-job-here)
             (el-job--dbg 0 "Timed out, was busy for 30+ seconds: %s"
                          (el-job-id el-job-here)))
-        (when (member (el-job-timer el-job-here) timer-list)
-          ;; It does, somehow, happen
-          ;; https://github.com/meedstrom/org-node/issues/94
-          (el-job--dbg 1 "Timer still active (this is a bug), recovering")
-          (cancel-timer (el-job-timer el-job-here)))
         (setf (el-job-timer el-job-here)
               (run-with-timer 30 nil #'el-job--reap (current-buffer)))))))
 
