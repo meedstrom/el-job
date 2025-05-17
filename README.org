@@ -70,13 +70,12 @@ To undo this change, set 'fast-read-process-output' to nil.
 
 1. The return value from the =:funcall-per-input= function must always be a list with a fixed length, where the elements are also lists.
 
-   For example, org-node passes =:funcall-per-input #'org-node-parser--scan-file= to el-job, and if you look in [[https://github.com/meedstrom/org-node/blob/main/org-node-parser.el][org-node-parser.el]] for the defun of =org-node-parser--scan-file=, it always returns a list of 6 items:
+   For example, org-mem passes =:funcall-per-input #'org-mem-parser--parse-file= to el-job, and if you look in [[https://github.com/meedstrom/org-mem/blob/main/org-mem-parser.el][org-mem-parser.el]] for the defun of =org-mem-parser--parse-file=, it always returns a list of 5 items:
 
    #+begin_src elisp
    (list (if missing-file (list missing-file)) ; List of 0 or 1 item
          (if file-mtime (list file-mtime))     ; List of 0 or 1 item
-         found-nodes                           ; List of many items
-         org-node-parser--paths-types          ; List of many items
+         found-entries                         ; List of many items
          org-node-parser--found-links          ; List of many items
          (if problem (list problem))))         ; List of 0 or 1 item
    #+end_src
