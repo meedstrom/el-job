@@ -518,6 +518,10 @@ see `el-job-launch'."
            "--batch"
            "--load" (el-job--ensure-compiled-lib 'el-job-child)
            "--eval" (format "(el-job-child--work #'%S)" funcall-per-input)))
+         ;; Ignore buffer-env
+         ;; https://github.com/meedstrom/org-node/issues/98
+         (process-environment (default-value 'process-environment))
+         (exec-path (default-value 'exec-path))
          ;; Ensure the working directory is not remote.
          ;; https://github.com/meedstrom/org-node/issues/46
          (default-directory invocation-directory)
