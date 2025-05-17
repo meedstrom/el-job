@@ -13,7 +13,7 @@ In the meantime, current Emacs does not hang at all.
 
 Best of all, it completes /faster/ than =(mapcar #'FN INPUTS)=, owing to the use of all CPU cores!
 
-For real-world usage, search for =el-job= in the source of [[https://github.com/meedstrom/org-node/blob/main/org-node.el][org-node.el]].
+For real-world usage, search for =el-job= in the source of [[https://github.com/meedstrom/org-mem/blob/main/org-mem.el][org-mem.el]].
 
 ** Design rationale
 I want to shorten the round-trip as much as possible, *between the start of an async task and having the results*.
