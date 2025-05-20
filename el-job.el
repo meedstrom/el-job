@@ -585,7 +585,7 @@ should trigger `el-job--handle-output'."
           busy-bufs)
       ;; Sanity check
       (unless (length< splits (1+ (length .ready)))
-        (if (or .busy (length= .ready 0))
+        (if (or .busy (null ready) (null splits))
             (error "el-job: Items split in %d lists, but only %d ready processes (and %d busy)"
                    (length splits) (length .ready) (length .busy))
           (warn "el-job: Items split in %d lists, but only %d ready processes. %s"
