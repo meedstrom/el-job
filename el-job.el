@@ -61,9 +61,6 @@
 (defvar el-job-major-version 2
   "Number incremented for breaking changes.")
 
-(define-obsolete-variable-alias 'el-jobs 'el-job--all-jobs "2.2.0 (2025-03-09)"
-  "I liked this name, but it breaks an Elisp convention.")
-
 
 ;;; Subroutines
 
@@ -845,22 +842,26 @@ Safely return nil otherwise, whether or not ID is known."
     (and job (el-job-busy job))))
 
 
-;;; Ok, don't need to break convention anymore.
+;;; Obsolete
 
-(define-obsolete-function-alias 'el-job:id             #'el-job-id             "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:callback       #'el-job-callback       "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:n-cores-to-use #'el-job-n-cores-to-use "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:ready          #'el-job-ready          "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:busy           #'el-job-busy           "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:stderr         #'el-job-stderr         "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:timestamps     #'el-job-timestamps     "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:poll-timer     #'el-job-timer          "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:finish-times   #'el-job-finish-times   "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:spawn-args     #'el-job-spawn-args     "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:past-elapsed   #'el-job-past-elapsed   "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:queued-inputs  #'el-job-queued-inputs  "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:input-sets     #'el-job-input-sets     "2.3.0 (2025-03-16)")
-(define-obsolete-function-alias 'el-job:result-sets    #'el-job-result-sets    "2.3.0 (2025-03-16)")
+;; Accelerate the timeframe until we can clean the namespace
+(defvar el-jobs :obsolete)
+(let ((complainer
+       (lambda (_) (error "el-job had renames in 2.3.0, update your code"))))
+  (fset 'el-job:id             complainer)
+  (fset 'el-job:callback       complainer)
+  (fset 'el-job:n-cores-to-use complainer)
+  (fset 'el-job:ready          complainer)
+  (fset 'el-job:busy           complainer)
+  (fset 'el-job:stderr         complainer)
+  (fset 'el-job:timestamps     complainer)
+  (fset 'el-job:poll-timer     complainer)
+  (fset 'el-job:finish-times   complainer)
+  (fset 'el-job:spawn-args     complainer)
+  (fset 'el-job:past-elapsed   complainer)
+  (fset 'el-job:queued-inputs  complainer)
+  (fset 'el-job:input-sets     complainer)
+  (fset 'el-job:result-sets    complainer))
 
 (provide 'el-job)
 
