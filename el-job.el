@@ -32,7 +32,7 @@
 ;; result as if it had been returned by that `mapcar'.  In the meantime,
 ;; current Emacs does not hang at all.
 
-;; You need to know the concept of a callback.
+;; You do need to grok the concept of a callback.
 
 ;; Public API:
 ;; - Function `el-job-launch' (main entry point)
@@ -120,8 +120,8 @@ an .eln anyway, without your having to recompile on save."
                               ;; `native-comp-unit-file'.  Current workaround
                               ;; is return nil, ie fall back on FILE; not
                               ;; ideal.
-                              (when (file-exists-p eln)
-                                eln))))
+                              (and (file-exists-p eln)
+                                   eln))))
        file)))
 
 (defvar el-job--onetime-canary nil)
@@ -155,16 +155,16 @@ find the correct file."
             (locate-file (symbol-name feature) load-path '(".el" ".el.gz"))))
     (if (or (string-suffix-p ".el" loaded)
             (string-suffix-p ".el.gz" loaded))
-        (or (when (native-comp-available-p)
-              ;; If we built an .eln last time, return it now even though the
-              ;; current Emacs process is still running interpreted .el.
-              ;;
-              ;; NOTE: Thanks to hashing file contents, `comp-lookup-eln'
-              ;; returns nil if the .el has changed on disk, even if the
-              ;; developer did not eval-buffer again.  Then we proceed to build
-              ;; another .eln.  Not sure I'm a fan... but eh, Works For Me, and
-              ;; it removes the need to `eval-buffer' constantly.
-              (comp-lookup-eln loaded))
+        (or (and (native-comp-available-p)
+                 ;; If we built an .eln last time, return it now even though
+                 ;; the current Emacs process is still running interpreted .el.
+                 ;;
+                 ;; NOTE: Thanks to hashing file contents, `comp-lookup-eln'
+                 ;; returns nil if the .el has changed on disk, even if the
+                 ;; developer did not eval-buffer again.  Then we proceed to
+                 ;; build another .eln.  Not sure I'm a fan... but eh, Works
+                 ;; For Me, and removes the need to `eval-buffer' constantly.
+                 (comp-lookup-eln loaded))
             (let* ((elc (file-name-concat temporary-file-directory
                                           (concat (symbol-name feature)
                                                   ".elc")))
@@ -277,9 +277,8 @@ being saddled with a huge item in addition to the average workload."
                     (push item items)))))))
         (if (length= sublists 0)
             (progn
-              ;; Degrade gracefully (but I think we never arrive here)
               (fset 'el-job--split-optimally #'el-job--split-evenly)
-              (cl-assert (not (length= sublists 0))))
+              (error "Internal coding mistake, degrading gracefully from now"))
           ;; Spread leftovers equally
           (let ((ctr 0)
                 (len (length sublists)))
@@ -393,8 +392,8 @@ INPUTS is a list that will be split by up to the output of
 INPUTS can also be a function that returns a list.  In this case, the
 function is deferred until needed, possibly saving on compute.
 
-If INPUTS returns nil, do nothing and return the symbol
-`inputs-were-empty'.
+If INPUTS is a function and it returns nil, do nothing and return the
+symbol `inputs-were-empty'.
 
 
 The subprocesses have no access to current Emacs state.  The only way
@@ -439,6 +438,8 @@ For debugging, see these commands:
   (when callback
     (unless (and (symbolp callback)
                  (functionp callback))
+      ;; This one doesn't actually need to be a symbol, but easier to debug
+      ;; and user is not surprised since it seems consistent
       (error "Argument CALLBACK must be a symbol with a function definition")))
   (unless (proper-list-p load-features)
     (error "Argument LOAD-FEATURES must be a list"))
@@ -518,7 +519,7 @@ see `el-job-launch'."
            "--batch"
            "--load" (el-job--ensure-compiled-lib 'el-job-child)
            "--eval" (format "(el-job-child--work #'%S)" funcall-per-input)))
-         ;; Ignore buffer-env
+         ;; Ignore buffer-env.
          ;; https://github.com/meedstrom/org-node/issues/98
          (process-environment (default-value 'process-environment))
          (exec-path (default-value 'exec-path))
@@ -663,13 +664,12 @@ after a short delay.  N is the count of checks done so far."
       (el-job--disable job)
       (el-job--dbg 2 "Reaped idle processes for %s" (el-job-id job)))))
 
-;; TODO: Consider setting `inhibit-quit' to nil or whatever is needed to let
-;;       us edebug the callback
+;; REVIEW: Consider setting `inhibit-quit' to nil (called by timer means t now)
 (defun el-job--handle-output ()
   "Handle output in current buffer.
 
 If this is the last output for the job, merge all outputs, maybe execute
-the callback function, finally maybe run the job again if there is now
+the callback function, finally maybe run the job again if there is
 more input in the queue."
   (let ((proc (get-buffer-process (current-buffer)))
         (job el-job-here)
@@ -708,8 +708,10 @@ more input in the queue."
         ;; Somehow, it took 700 lines of code to get here.
         (when .callback
           ;; Allow quitting out of a hung or slow CALLBACK.
+          ;; TODO: Recover well.  How?
           (with-local-quit
-            (funcall .callback (el-job--zip-all .result-sets) job)))
+            (funcall .callback (el-job--zip-all .result-sets) job)
+            t))
         ;; REVIEW: Either
         ;; 1. get rid of this code path (see comments in `el-job-launch' re.
         ;;    queued inputs); or
@@ -787,7 +789,7 @@ for buffer names starting with \" *el-job\" - note leading space."
              (remhash id el-job--all-jobs))
            el-job--all-jobs))
 
-(defmacro el-job--sit-until-nil-p (test max-secs &optional message)
+(defmacro el-job--sit-until-not (test max-secs &optional message)
   "Block until form TEST evaluates to nil, or time MAX-SECS has elapsed.
 Either way, return the last TEST result, i.e. non-nil if timed out.
 
@@ -817,14 +819,21 @@ A typical TEST would check if something in the environment has changed."
 If the job has still not finished after MAX-SECS seconds, stop
 blocking and return nil.
 
-Meanwhile, ensure string MESSAGE is visible in the minibuffer."
-  (not (el-job--sit-until-nil-p (el-job-is-busy id) max-secs message)))
+Meanwhile, ensure string MESSAGE is visible in the minibuffer.
+
+If there is no job that matches ID, immediately return t."
+  (when (el-job-p id)
+    (error "el-job-is-busy: Passed a job object, but expected only a job ID"))
+  (let ((job (gethash id el-job--all-jobs)))
+    (if job
+        (not (el-job--sit-until-not (el-job-busy job) max-secs message))
+      t)))
 
 (defun el-job-is-busy (id)
   "Return list of busy processes for job ID, if any.
 Safely return nil otherwise, whether or not ID is known."
   (when (el-job-p id)
-    (error "el-job-is-busy: Passed a job object, but expected only an ID"))
+    (error "el-job-is-busy: Passed a job object, but expected only a job ID"))
   (let ((job (gethash id el-job--all-jobs)))
     (and job (el-job-busy job))))
 
