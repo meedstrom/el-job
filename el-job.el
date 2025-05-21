@@ -516,10 +516,6 @@ see `el-job-launch'."
            "--batch"
            "--load" (el-job--ensure-compiled-lib 'el-job-child)
            "--eval" (format "(el-job-child--work #'%S)" funcall-per-input)))
-         ;; Ignore buffer-env.
-         ;; https://github.com/meedstrom/org-node/issues/98
-         (process-environment (default-value 'process-environment))
-         (exec-path (default-value 'exec-path))
          ;; Ensure the working directory is not remote.
          ;; https://github.com/meedstrom/org-node/issues/46
          (default-directory invocation-directory)
@@ -531,33 +527,34 @@ see `el-job-launch'."
               (setq-local el-job-here job)
               (erase-buffer)
               (current-buffer)))
-      (condition-case err
-          (dotimes (i .n-cores-to-use)
-            (let ((proc (make-process
-                         :name (format "el-job:%s:%d" .id i)
-                         :noquery t
-                         :connection-type 'pipe
-                         ;; https://github.com/jwiegley/emacs-async/issues/165
-                         :coding 'utf-8-emacs-unix
-                         :stderr .stderr
-                         :buffer (get-buffer-create
-                                  (format " *el-job:%s:%d*" .id i) t)
-                         :command command
-                         :sentinel #'ignore)))
-              (when (string-suffix-p ">" (process-name proc))
-                (el-job--dbg 1 "Unintended duplicate process id for %s" proc))
-              (with-current-buffer (process-buffer proc)
-                (setq-local el-job-here job)
-                (process-send-string proc vars)
-                (process-send-string proc "\n")
-                (process-send-string proc libs)
-                (process-send-string proc "\n"))
-              (push proc .ready)))
-        ;; https://github.com/meedstrom/org-node/issues/75
-        (( file-error )
-         (el-job--disable job)
-         (el-job--dbg 1 "Terminated job because of: %S" err)
-         (setq return-value err)))
+      (with-temp-buffer ;; https://github.com/meedstrom/org-node/issues/98
+        (condition-case err
+            (dotimes (i .n-cores-to-use)
+              (let ((proc (make-process
+                           :name (format "el-job:%s:%d" .id i)
+                           :noquery t
+                           :connection-type 'pipe
+                           ;; https://github.com/jwiegley/emacs-async/issues/165
+                           :coding 'utf-8-emacs-unix
+                           :stderr .stderr
+                           :buffer (get-buffer-create
+                                    (format " *el-job:%s:%d*" .id i) t)
+                           :command command
+                           :sentinel #'ignore)))
+                (when (string-suffix-p ">" (process-name proc))
+                  (el-job--dbg 1 "Unintended duplicate process id for %s" proc))
+                (with-current-buffer (process-buffer proc)
+                  (setq-local el-job-here job)
+                  (process-send-string proc vars)
+                  (process-send-string proc "\n")
+                  (process-send-string proc libs)
+                  (process-send-string proc "\n"))
+                (push proc .ready)))
+          ;; https://github.com/meedstrom/org-node/issues/75
+          (( file-error )
+           (el-job--disable job)
+           (el-job--dbg 1 "Terminated job because of: %S" err)
+           (setq return-value err))))
       ;; Return non-nil on error, so caller can choose to fail quietly.
       ;; We suppressed the error signal because for some users, it only occurs
       ;; intermittently and does not break things.
