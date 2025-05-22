@@ -578,10 +578,10 @@ should trigger `el-job--handle-output'."
                                            .past-elapsed))
           busy-bufs)
       ;; Sanity check
-      (unless (length< splits (1+ (length .ready)))
-        (if (or .busy (null .ready) (null splits))
-            (error "el-job: Items split in %d lists, but only %d ready processes (and %d busy)"
-                   (length splits) (length .ready) (length .busy))
+      (when (length> splits (length .ready))
+        (if (or (null .ready) (null splits))
+            (error "el-job: Items split in %d lists, but only %d ready processes "
+                   (length splits) (length .ready))
           (warn "el-job: Items split in %d lists, but only %d ready processes. %s"
                 (length splits) (length .ready)
                 "Falling back to use 1 process")
