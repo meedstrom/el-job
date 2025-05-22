@@ -594,8 +594,7 @@ should trigger `el-job--handle-output'."
             (print-symbols-bare t)
             (print-escape-newlines t)
             items proc)
-        (while splits
-          (setq items (pop splits))
+        (dolist (items splits)
           (setq proc (pop .ready))
           (push proc .busy)
           (push (process-buffer proc) busy-bufs)
