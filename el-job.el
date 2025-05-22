@@ -569,6 +569,8 @@ should trigger `el-job--handle-output'."
   (el-job--with job
       ( .ready .busy .input-sets .result-sets .queued-inputs .n-cores-to-use
         .past-elapsed .timestamps .finish-times .id .stderr .timer )
+    (when .busy
+      (error "Unexpected still-busy processes at this time: %S" .busy))
     (cancel-timer .timer)
     (setf .input-sets nil)
     (setf .result-sets nil)
@@ -593,7 +595,7 @@ should trigger `el-job--handle-output'."
             (print-circle t)
             (print-symbols-bare t)
             (print-escape-newlines t)
-            items proc)
+            proc)
         (dolist (items splits)
           (setq proc (pop .ready))
           (push proc .busy)
