@@ -77,7 +77,7 @@
         (should (string-suffix-p ".elc" (el-job--ensure-compiled-lib
                                          'el-job-child)))
         (when (let ((procs (hash-table-values comp-async-compilations)))
-                (not (el-job--sit-until-nil-p
+                (not (el-job--sit-until-not
                       (cl-some #'process-live-p procs) 10)))
           (should (string-suffix-p ".eln" (el-job--ensure-compiled-lib
                                            'el-job-child))))))))

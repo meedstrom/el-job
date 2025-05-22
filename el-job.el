@@ -845,7 +845,7 @@ Safely return nil otherwise, whether or not ID is known."
 ;; Accelerate the timeframe until we can clean the namespace
 (defvar el-jobs :obsolete)
 (let ((complainer
-       (lambda (_) (error "el-job had renames in 2.3.0, update your code"))))
+       (lambda (_) (error "Some renames in el-job 2.3.0, update your code"))))
   (fset 'el-job:id             complainer)
   (fset 'el-job:callback       complainer)
   (fset 'el-job:n-cores-to-use complainer)
