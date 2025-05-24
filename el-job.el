@@ -296,6 +296,13 @@ See subroutine `el-job-child--zip' for details."
       (setq merged (el-job-child--zip (pop lists) merged)))
     merged))
 
+(defun el-job--windows-cores ()
+  (with-temp-buffer
+    (call-process "cmd.exe" nil t nil "/C" "wmic CPU get NumberOfCores /value")
+    (goto-char 1)
+    (and (re-search-forward "NumberOfCores=\\([0-9]+\\)" nil t)
+         (number-to-string (match-string 1)))))
+
 
 ;;; Main logic
 
@@ -335,36 +342,6 @@ with one character of your choosing, such as a dot."
   input-sets
   result-sets)
 
-(defvar actual-core-count 0
-  "Actual number of physical CPU cores. If zero or nil, auto-detect based on OS.")
-
-(defun windows-core-count ()
-  "Retrieve physical CPU core count on Windows using cmd.exe."
-  (string-to-number
-   (with-temp-buffer
-     (call-process "cmd.exe" nil t nil
-                   "/C"
-                   "wmic CPU get NumberOfCores /value")
-     (goto-char (point-min))
-     (if (re-search-forward "NumberOfCores=\\([0-9]+\\)" nil t)
-         (match-string 1)
-       "1"))))  ;; fallback if wmic fails
-
-(defun get-max-concurrency ()
-  "Return appropriate max concurrency value based on the OS and actual-core-count.
-On Windows, uses `wmic` via cmd.exe to detect physical cores.
-On non-Windows systems, falls back to (1- (num-processors)).
-Always returns at least 1."
-  (let ((core-count (or (and (numberp actual-core-count)
-                             (> actual-core-count 0)
-                             actual-core-count)
-                        (when (eq system-type 'windows-nt)
-                          (windows-core-count))
-                        (when (fboundp 'num-processors)
-                          (1- (num-processors)))
-                        1)))
-    (max 1 (1- core-count))))
-
 ;;;###autoload
 (cl-defun el-job-launch (&key id
                               (if-busy 'wait)
@@ -372,8 +349,7 @@ Always returns at least 1."
                               inject-vars
                               inputs
                               funcall-per-input
-                              callback
-                              max-concurrency)
+                              callback)
   "Run FUNCALL-PER-INPUT in one or more headless Elisp processes.
 Then merge the return values \(lists of N lists) into one list
 \(of N lists) and pass it to CALLBACK.
@@ -500,17 +476,13 @@ For debugging, see these commands:
           (when do-exec
             (setf .callback callback)
             ;; Prevent spawning a dozen processes when we need only one or two
-            (let* ((machine-cores (max 1 (1- (num-processors))))
-                   (user-limit (and (integerp max-concurrency)
-                                    (> max-concurrency 0)
-                                    max-concurrency))
-                   (max-usable-cores (if user-limit
-                                         (min machine-cores user-limit)
-                                       machine-cores)))
+            (let ((machine-cores (max 1 (1- (num-processors)))))
+              (when (eq system-type 'windows-nt)
+                (setq machine-cores (or (el-job--windows-cores) 1)))
               (setf .n-cores-to-use
-                    (if (length< .queued-inputs max-usable-cores)
+                    (if (length< .queued-inputs machine-cores)
                         (length .queued-inputs)
-                      max-usable-cores))
+                      machine-cores))
               (when (or (length< .ready .n-cores-to-use)
                         (not (cl-every #'process-live-p .ready)))
                 (setq do-respawn t)))
