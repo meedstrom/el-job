@@ -297,14 +297,23 @@ See subroutine `el-job-child--zip' for details."
     merged))
 
 (defun el-job--windows-cores ()
+  "Try to get number of physical cores on Windows system."
   (with-temp-buffer
     (call-process "cmd.exe" nil t nil "/C" "wmic CPU get NumberOfCores /value")
     (goto-char 1)
-    (and (re-search-forward "NumberOfCores=\\([0-9]+\\)" nil t)
-         (number-to-string (match-string 1)))))
+    (or (and (re-search-forward "NumberOfCores=\\([0-9]+\\)" nil t)
+             (number-to-string (match-string 1)))
+        1)))
 
 
 ;;; Main logic
+
+(defcustom el-job-max-cores nil
+  "A limit on the number of subprocesses for one job.
+Windows can get \"error: Could not create child process\" if making too
+many processes, so capping it can help."
+  :type '(choice integer (const :tag "Auto" nil))
+  :group 'processes)
 
 (defvar el-job--all-jobs (make-hash-table :test #'eq)
   "Table of all el-job objects.")
@@ -476,9 +485,10 @@ For debugging, see these commands:
           (when do-exec
             (setf .callback callback)
             ;; Prevent spawning a dozen processes when we need only one or two
-            (let ((machine-cores (max 1 (1- (num-processors)))))
-              (when (eq system-type 'windows-nt)
-                (setq machine-cores (or (el-job--windows-cores) 1)))
+            (let ((machine-cores (max 1 (or el-job-max-cores
+                                            (and (eq system-type 'windows-nt)
+                                                 (- (el-job--windows-cores) 1))
+                                            (- (num-processors) 1)))))
               (setf .n-cores-to-use
                     (if (length< .queued-inputs machine-cores)
                         (length .queued-inputs)
