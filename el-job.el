@@ -293,6 +293,13 @@ See subroutine `el-job-child--zip' for details."
       (setq merged (el-job-child--zip (pop lists) merged)))
     merged))
 
+;; Awaiting response from https://github.com/meedstrom/el-job/pull/5
+(defun el-job--windows-cores ()
+  (with-temp-buffer
+    (call-process "cmd.exe" nil t nil "/C" "wmic CPU get NumberOfCores /value")
+    (and (re-search-forward "NumberOfCores=\\([0-9]+\\)" nil t)
+         (number-to-string (match-string 1)))))
+
 
 ;;; Main logic
 
@@ -472,6 +479,8 @@ For debugging, see these commands:
               (setf .n-cores-to-use (if (length< .queued-inputs machine-cores)
                                         (length .queued-inputs)
                                       machine-cores))
+              (when (eq system-type 'windows-nt)
+                (setf .n-cores-to-use (or (el-job--windows-cores) 1)))
               (when (or (length< .ready .n-cores-to-use)
                         (not (cl-every #'process-live-p .ready)))
                 (setq do-respawn t)))
