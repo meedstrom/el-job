@@ -299,7 +299,7 @@ See subroutine `el-job-child--zip' for details."
     (call-process "cmd.exe" nil t nil "/C" "wmic CPU get NumberOfCores /value")
     (goto-char 1)
     (or (and (re-search-forward "NumberOfCores=\\([0-9]+\\)" nil t)
-             (number-to-string (match-string 1)))
+             (string-to-number (match-string 1)))
         1)))
 
 
