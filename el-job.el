@@ -660,7 +660,11 @@ after a short delay.  N is the count of checks done so far."
               (el-job--dbg 2 "Dead process buffer (this may be normal)")
             (set-buffer buf)
             (if (eq (char-before) ?\n)
-                (el-job--handle-output)
+                (if (string-blank-p (buffer-string))
+                    (progn
+                      (el-job--dbg 0 "Process buffer empty? Report a bug: %S" buf)
+                      (push buf busy-bufs))
+                  (el-job--handle-output))
               (push buf busy-bufs))))
         (cl-assert el-job-here)
         (when (member (el-job-timer el-job-here) timer-list)
