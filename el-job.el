@@ -662,7 +662,9 @@ after a short delay.  N is the count of checks done so far."
             (if (eq (char-before) ?\n)
                 (if (string-blank-p (buffer-string))
                     (progn
-                      (el-job--dbg 0 "Process buffer empty? Report a bug: %S" buf)
+                      ;; https://github.com/meedstrom/org-mem/issues/25
+                      (el-job--dbg 2 "Process buffer empty, assuming not yet filled: %S"
+                                   buf)
                       (push buf busy-bufs))
                   (el-job--handle-output))
               (push buf busy-bufs))))
