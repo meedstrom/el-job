@@ -24,6 +24,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'subr-x) ;; hash-table-keys
 
 (defcustom el-job-ng-max-cores
   (max 1 (- (if (eq system-type 'windows-nt)
@@ -253,9 +254,10 @@ ID can also be passed to these helpers:
                (coding-system-for-write 'utf-8-emacs-unix)
                (coding-system-for-read 'utf-8-emacs-unix)
                (vars (prin1-to-string
-                      (append (list (cons 'load-path load-path)
-                                    (cons 'native-comp-eln-load-path native-comp-eln-load-path)
-                                    (cons 'temporary-file-directory temporary-file-directory))
+                      (append (list (cons 'temporary-file-directory temporary-file-directory)
+                                    (cons 'load-path load-path)
+                                    (and (boundp 'native-comp-eln-load-path)
+                                         (cons 'native-comp-eln-load-path native-comp-eln-load-path)))
                               ;; NOTE: These go last so they can override the above.
                               inject-vars)))
                (libs (prin1-to-string require))
@@ -448,10 +450,12 @@ MAX-SECS and MESSAGE as in `el-job-ng-sit-until'."
     (remhash id el-job-ng--jobs)))
 
 (defun el-job-ng-stderr (id)
-  (el-job-ng--job-stderr (el-job-ng-job id)))
+  (when-let* ((job (el-job-ng-job id)))
+    (el-job-ng--job-stderr (el-job-ng-job id))))
 
 (defun el-job-ng-processes (id)
-  (el-job-ng--job-processes (el-job-ng-job id)))
+  (when-let* ((job (el-job-ng-job id)))
+    (el-job-ng--job-processes job)))
 
 (defun el-job-ng-job (id)
   (gethash id el-job-ng--jobs))
@@ -479,7 +483,10 @@ MAX-SECS and MESSAGE as in `el-job-ng-sit-until'."
                                    funcall-per-input
                                    callback)
   "Like `el-job-ng-run' but synchronous.
-This exists for comparison and debugging."
+This exists for comparison and debugging.
+
+For ID INJECT-VARS REQUIRE EVAL INPUTS FUNCALL-PER-INPUT CALLBACK,
+see `el-job-ng-run'."
   (setq id (or id (abs (random))))
   (let ((job (or (gethash id el-job-ng--jobs)
                  (puthash id (el-job-ng--make-job :id id) el-job-ng--jobs))))

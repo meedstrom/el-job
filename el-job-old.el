@@ -17,6 +17,8 @@
 
 ;;; Commentary:
 
+;;; Code:
+
 (require 'cl-lib)
 (require 'el-job-old-child)
 
@@ -293,7 +295,7 @@ with one character of your choosing, such as a dot."
      ,@body))
 
 (cl-defstruct (el-job-old (:constructor el-job-old--make)
-                      (:copier nil))
+                          (:copier nil))
   id
   callback
   (n-cores-to-use 1)
@@ -312,12 +314,12 @@ with one character of your choosing, such as a dot."
 
 ;;;###autoload
 (cl-defun el-job-old-launch (&key id
-                              (if-busy 'wait)
-                              load-features
-                              inject-vars
-                              inputs
-                              funcall-per-input
-                              callback)
+                                  (if-busy 'wait)
+                                  load-features
+                                  inject-vars
+                                  inputs
+                                  funcall-per-input
+                                  callback)
   "Run FUNCALL-PER-INPUT in one or more headless Elisp processes.
 Then merge the return values \(lists of N lists) into one list
 \(of N lists) and pass it to CALLBACK.
@@ -424,7 +426,7 @@ For debugging, see these commands:
         (do-respawn nil)
         (do-exec nil))
     (el-job-old--with job ( .queued-inputs .busy .ready .n-cores-to-use
-                        .spawn-args .callback .timestamps )
+                            .spawn-args .callback .timestamps )
       (unless (and .busy (eq if-busy 'noop))
         (plist-put .timestamps :launched (current-time))
         ;; REVIEW: Can we somehow defer this to even later?
@@ -558,8 +560,8 @@ should trigger `el-job-old--handle-output'."
     (setf .result-sets nil)
     (setf .finish-times nil)
     (let ((splits (el-job-old--split-optimally .queued-inputs
-                                           .n-cores-to-use
-                                           .past-elapsed))
+                                               .n-cores-to-use
+                                               .past-elapsed))
           busy-bufs)
       ;; Sanity check
       (when (length> splits (length .ready))
@@ -626,7 +628,7 @@ after a short delay.  N is the count of checks done so far."
                     (progn
                       ;; https://github.com/meedstrom/org-mem/issues/25
                       (el-job-old--dbg 2 "Process buffer empty, assuming not yet filled: %S"
-                                   buf)
+                                       buf)
                       (push buf busy-bufs))
                   (el-job-old--handle-output))
               (push buf busy-bufs))))
@@ -643,7 +645,7 @@ after a short delay.  N is the count of checks done so far."
                        (/ n 32.0) nil #'el-job-old--poll (1+ n) busy-bufs))
               (el-job-old--disable el-job-old-here)
               (el-job-old--dbg 0 "Timed out, was busy for 30+ seconds: %s"
-                           (el-job-old-id el-job-old-here)))
+                               (el-job-old-id el-job-old-here)))
           (setf (el-job-old-timer el-job-old-here)
                 (run-with-timer 30 nil #'el-job-old--reap (current-buffer))))))))
 
