@@ -40,17 +40,17 @@ That's it in a nutshell.  You can look at real-world usage by searching for "el-
 @end ifnottex
 
 @menu
-* New (el-job-ng)::
-* Old (el-job-old)::
+* Since 2.5.0: Since 250. 
+* README for 2.4.8: README for 248. 
 
 @detailmenu
 --- The Detailed Node Listing ---
 
-New (el-job-ng)
+Since 2.5.0
 
 * Future work::
 
-Old (el-job-old)
+README for 2.4.8
 
 * Design rationale::
 * News 2.4: News 24. 
@@ -69,10 +69,10 @@ Design rationale
 @end detailmenu
 @end menu
 
-@node New (el-job-ng)
-@chapter New (el-job-ng)
+@node Since 250
+@chapter Since 2.5.0
 
-Since 2.5.0@comma{} released @emph{<2025-Oct-07>}@comma{} this repo comes with a variant library "el-job-ng".
+Released @emph{<2025-Oct-06>}@comma{} v2.5.0 comes with a variant library "el-job-ng".
 
 I find it simpler and easier to reason about.  400 lines of code instead of 800.
 
@@ -84,16 +84,18 @@ Does @emph{not} ever keep a process alive
 @item
 Does @emph{not} merge the subprocesses' outputs in a bespoke way@comma{} just uses @samp{append}.
 @item
-Does @emph{not} look up @samp{load-history} to try hard to find an .eln variant of your libraries@comma{} instead just shares the whole @samp{load-path} to let @samp{require} do its thing.
+Does @emph{not} look up @samp{load-history} to try hard to find an .eln variant of your libraries@comma{} instead it lets @samp{require} look up @samp{load-path} normally.
 @item
 Removed argument @samp{:if-busy}@comma{} you can manage this yourself with @samp{el-job-ng-busy-p} and @samp{el-job-ng-kill}.
 @item
-Argument @samp{:funcall-per-input} takes a function of two arguments@comma{} not one.
+Argument @samp{:funcall-per-input} now takes a function of two (2) arguments@comma{} not one.
 @item
-Added an optional argument @samp{:eval}.
+Argument @samp{:callback} now takes a function of one (1) argument@comma{} not two.
+@item
+Added optional argument @samp{:eval}.
 @end itemize
 
-Feel free to file an issue or email.  The design is always changing in response to my needs@comma{} so hearing about other people's needs is instructive as well!
+The design is always changing in response to my needs@comma{} so feel free to file an issue or email!  It's instructive to hear about other people's needs.
 
 @menu
 * Future work::
@@ -102,7 +104,9 @@ Feel free to file an issue or email.  The design is always changing in response 
 @node Future work
 @section Future work
 
-I may write more variants.  Something that came with experience is that it's best to hard-code an entire variant library for a narrow use-case rather than complicate the same library with different code flows@comma{} as when it comes to this type of library@comma{} you really want to keep it easy to reason about!
+I may write yet another variant.
+
+Something that came with experience is that it's best to make a new variant library for a narrow use-case@comma{} rather than complicate one library with different code flows.  When it comes to this type of library@comma{} you really want to keep it easy to reason about!
 
 Ideas as of @emph{<2025-Oct-06>}:
 
@@ -120,10 +124,12 @@ Keeping subprocesses alive forever@comma{} so they are available at beck and cal
 That's basically implemented in "el-job-old"@comma{} and partly why it got so hairy@comma{} but it could be remade to put this usage front-and-center@comma{} with a "happy path" UX@.
 
 At this time@comma{} I do not have a demanding use-case to experiment with@comma{} to discover what that happy path should be@comma{} how the affordances should be.
+
+If you need this now@comma{} I recommend @uref{https://github.com/jwiegley/emacs-async, async.el}.
 @end table
 
-@node Old (el-job-old)
-@chapter Old (el-job-old)
+@node README for 248
+@chapter README for 2.4.8
 
 @menu
 * Design rationale::

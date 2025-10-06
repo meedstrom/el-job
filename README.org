@@ -19,9 +19,9 @@ That's it in a nutshell.  You can look at real-world usage by searching for "el-
 - [[https://raw.githubusercontent.com/meedstrom/org-mem/refs/heads/main/org-mem.el][org-mem.el]]
 - [[https://raw.githubusercontent.com/meedstrom/org-roam-async/refs/heads/main/org-roam-async.el][org-roam-async.el]]
 
-* New (el-job-ng)
+* Since 2.5.0
 
-Since 2.5.0, released [2025-10-07 Tue], this repo comes with a variant library "el-job-ng".
+Released [2025-10-06 Mon], v2.5.0 comes with a variant library "el-job-ng".
 
 I find it simpler and easier to reason about.  400 lines of code instead of 800.
 
@@ -29,16 +29,19 @@ Some differences:
 
 - Does /not/ ever keep a process alive
 - Does /not/ merge the subprocesses' outputs in a bespoke way, just uses =append=.
-- Does /not/ look up =load-history= to try hard to find an .eln variant of your libraries, instead just shares the whole =load-path= to let =require= do its thing.
+- Does /not/ look up =load-history= to try hard to find an .eln variant of your libraries, instead it lets =require= look up =load-path= normally.
 - Removed argument =:if-busy=, you can manage this yourself with =el-job-ng-busy-p= and =el-job-ng-kill=.
-- Argument =:funcall-per-input= takes a function of two arguments, not one.
-- Added an optional argument =:eval=.
+- Argument =:funcall-per-input= now takes a function of two (2) arguments, not one.
+- Argument =:callback= now takes a function of one (1) argument, not two.
+- Added optional argument =:eval=.
 
-Feel free to file an issue or email.  The design is always changing in response to my needs, so hearing about other people's needs is instructive as well!
+The design is always changing in response to my needs, so feel free to file an issue or email!  It's instructive to hear about other people's needs.
 
 ** Future work
 
-I may write more variants.  Something that came with experience is that it's best to hard-code an entire variant library for a narrow use-case rather than complicate the same library with different code flows, as when it comes to this type of library, you really want to keep it easy to reason about!
+I may write yet another variant.
+
+Something that came with experience is that it's best to make a new variant library for a narrow use-case, rather than complicate one library with different code flows.  When it comes to this type of library, you really want to keep it easy to reason about!
 
 Ideas as of [2025-10-06 Mon]:
 
@@ -56,7 +59,9 @@ Ideas as of [2025-10-06 Mon]:
 
   At this time, I do not have a demanding use-case to experiment with, to discover what that happy path should be, how the affordances should be.
 
-* Old (el-job-old)
+  If you need this now, I recommend [[https://github.com/jwiegley/emacs-async][async.el]].
+
+* README for 2.4.8
 ** Design rationale
 I wanted to shorten the round-trip as much as possible, *between the start of an async task and having the results*.
 
