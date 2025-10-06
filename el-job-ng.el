@@ -521,5 +521,6 @@ see `el-job-ng-run'."
 ;; Local Variables:
 ;; checkdoc-spellcheck-documentation-flag: nil
 ;; checkdoc-verb-check-experimental-flag: nil
+;; checkdoc-force-docstrings-flag: nil
 ;; emacs-lisp-docstring-fill-column: 72
 ;; End:
