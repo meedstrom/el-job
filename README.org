@@ -1,9 +1,11 @@
-# Copying and distribution of this file, with or without modification,
-# are permitted in any medium without royalty provided the copyright
-# notice and this notice are preserved.  This file is offered as-is,
-# without any warranty.
-#+HTML: <a href="https://repology.org/project/emacs%3Ael-job/versions"><img src="https://repology.org/badge/vertical-allrepos/emacs%3Ael-job.svg" alt="Packaging status"></a>
-* el-job
+#+TITLE: el-job
+#+AUTHOR: Martin Edström
+#+EMAIL: meedstrom@runbox.eu
+#+EXPORT_FILE_NAME: el-job
+#+TEXINFO_DIR_TITLE: El-Job: (el-job).
+#+TEXINFO_DIR_DESC: Async multicore mapcar
+#+TEXINFO_DIR_CATEGORY: Emacs
+#+HTML: <a href="https://repology.org/project/emacs%3Ael-job/versions"><img src="https://repology.org/badge/vertical-allrepos/emacs%3Ael-job.svg" alt="Packaging status" align="right"></a>
 
 Imagine you have a function you'd like to run on a long list of inputs.  You could run =(mapcar #'FN INPUTS)=, but that hangs Emacs until done.
 
@@ -13,10 +15,50 @@ In the meantime, current Emacs does not hang at all.
 
 Best of all, it completes /faster/ than =(mapcar #'FN INPUTS)=, owing to the use of all CPU cores!
 
-For real-world usage, search for =el-job= in the source of [[https://github.com/meedstrom/org-mem/blob/main/org-mem.el][org-mem.el]].
+That's it in a nutshell.  You can look at real-world usage by searching for "el-job" in these packages:
+- [[https://raw.githubusercontent.com/meedstrom/org-mem/refs/heads/main/org-mem.el][org-mem.el]]
+- [[https://raw.githubusercontent.com/meedstrom/org-roam-async/refs/heads/main/org-roam-async.el][org-roam-async.el]]
 
+* New (el-job-ng)
+
+Since 2.5.0, released [2025-10-07 Tue], this repo comes with a variant library "el-job-ng".
+
+I find it simpler and easier to reason about.  400 lines of code instead of 800.
+
+Some differences:
+
+- Does /not/ ever keep a process alive
+- Does /not/ merge the subprocesses' outputs in a bespoke way, just uses =append=.
+- Does /not/ look up =load-history= to try hard to find an .eln variant of your libraries, instead just shares the whole =load-path= to let =require= do its thing.
+- Removed argument =:if-busy=, you can manage this yourself with =el-job-ng-busy-p= and =el-job-ng-kill=.
+- Argument =:funcall-per-input= takes a function of two arguments, not one.
+- Added an optional argument =:eval=.
+
+Feel free to file an issue or email.  The design is always changing in response to my needs, so hearing about other people's needs is instructive as well!
+
+** Future work
+
+I may write more variants.  Something that came with experience is that it's best to hard-code an entire variant library for a narrow use-case rather than complicate the same library with different code flows, as when it comes to this type of library, you really want to keep it easy to reason about!
+
+Ideas as of [2025-10-06 Mon]:
+
+- File IPC ::
+  Sending input and output by writing and reading files, instead of through the pipe connection.
+
+  Theory: performance can sometimes be a lot better, with large inputs and outputs.  I would guess it depends a lot on the machine.
+
+  Drawback: if the data sent is sensitive, those files probably should be encrypted, and that could negate any performance benefit.
+
+- Worker daemons ::
+  Keeping subprocesses alive forever, so they are available at beck and call -- think worker daemons.
+
+  That's basically implemented in "el-job-old", and partly why it got so hairy, but it could be remade to put this usage front-and-center, with a "happy path" UX.
+
+  At this time, I do not have a demanding use-case to experiment with, to discover what that happy path should be, how the affordances should be.
+
+* Old (el-job-old)
 ** Design rationale
-I want to shorten the round-trip as much as possible, *between the start of an async task and having the results*.
+I wanted to shorten the round-trip as much as possible, *between the start of an async task and having the results*.
 
 For example, say you have some lisp that collects completion candidates, and you want to run it asynchronously because the lisp you wrote isn't always fast enough to avoid the user's notice, but you'd still like it to return as soon as possible.
 
