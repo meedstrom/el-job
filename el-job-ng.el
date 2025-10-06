@@ -24,7 +24,6 @@
 ;;; Code:
 
 (require 'cl-lib)
-(require 'subr-x) ;; hash-table-keys
 
 (defcustom el-job-ng-max-cores
   (max 1 (- (if (eq system-type 'windows-nt)
@@ -466,7 +465,8 @@ MAX-SECS and MESSAGE as in `el-job-ng-sit-until'."
 (defun el-job-ng-debug-kill-all ()
   "Kill all jobs and forget all metadata."
   (interactive)
-  (mapc #'el-job-ng-kill (hash-table-keys el-job-ng--jobs))
+  (cl-loop for id being each hash-key of el-job-ng--jobs
+           do (el-job-ng-kill id))
   (clrhash el-job-ng--jobs))
 
 (defun el-job-ng-cycle-debug ()
@@ -485,8 +485,8 @@ MAX-SECS and MESSAGE as in `el-job-ng-sit-until'."
   "Like `el-job-ng-run' but synchronous.
 This exists for comparison and debugging.
 
-For ID INJECT-VARS REQUIRE EVAL INPUTS FUNCALL-PER-INPUT CALLBACK,
-see `el-job-ng-run'."
+Arguments are the same as `el-job-ng-run' \(ID, INJECT-VARS, REQUIRE,
+EVAL, INPUTS, FUNCALL-PER-INPUT, CALLBACK)."
   (setq id (or id (abs (random))))
   (let ((job (or (gethash id el-job-ng--jobs)
                  (puthash id (el-job-ng--make-job :id id) el-job-ng--jobs))))
