@@ -396,10 +396,6 @@ ID can also be passed to these helpers:
 Either way, return the last TEST result.
 In other words, a nil return value means it has timed out.
 
-For example, to wait on a job with the ID `:foo' to finish, you can use:
-
-    \(el-job-ng-sit-until (el-job-ng-ready-p :foo) 10)
-
 While blocking input to Emacs, keep MESSAGE visible in the echo area.
 MESSAGE can be a string, or a form that evaluates to a string.
 
