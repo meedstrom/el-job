@@ -485,7 +485,7 @@ For debugging, see these commands:
 (defvar-local el-job-old-here nil)
 (defun el-job-old--spawn-processes (job load-features inject-vars eval funcall-per-input)
   "Spin up processes for JOB, standing by for input.
-For arguments LOAD-FEATURES INJECT-VARS FUNCALL-PER-INPUT,
+For arguments LOAD-FEATURES INJECT-VARS EVAL FUNCALL-PER-INPUT,
 see `el-job-old-launch'."
   (let* ((print-length nil)
          (print-level nil)
