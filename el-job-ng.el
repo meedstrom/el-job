@@ -302,7 +302,7 @@ ID can also be passed to these helpers:
                             forms "\n"
                             func "\n"
                             (prin1-to-string (pop input-sets)) "\n")
-                    (send-region proc (point-min) (point-max))
+                    (process-send-region proc (point-min) (point-max))
                     (when (>= el-job-ng--debug-lvl 2)
                       (clone-buffer (format "*cloned: %s*" (buffer-name))))
                     (erase-buffer))))
