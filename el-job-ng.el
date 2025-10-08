@@ -256,9 +256,10 @@ ID can also be passed to these helpers:
                (coding-system-for-read 'utf-8-emacs-unix)
                (vars (prin1-to-string
                       (append (list (cons 'temporary-file-directory temporary-file-directory)
-                                    (cons 'load-path load-path)
-                                    (and (boundp 'native-comp-eln-load-path)
-                                         (cons 'native-comp-eln-load-path native-comp-eln-load-path)))
+                                    (cons 'load-path load-path))
+                              (and (boundp 'native-comp-eln-load-path)
+                                   (list
+                                    (cons 'native-comp-eln-load-path native-comp-eln-load-path)))
                               ;; NOTE: These go last so they can override the above.
                               inject-vars)))
                (libs (prin1-to-string require))
