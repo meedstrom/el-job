@@ -25,6 +25,9 @@
 (defvar el-job-old-major-version 2
   "Number incremented for breaking changes.")
 
+(defvar el-job-old-internal-version 100
+  "Number sometimes incremented when the developer feels like it.")
+
 
 ;;; Subroutines
 
@@ -317,6 +320,7 @@ with one character of your choosing, such as a dot."
                                   (if-busy 'wait)
                                   load-features
                                   inject-vars
+                                  eval
                                   inputs
                                   funcall-per-input
                                   callback)
@@ -386,6 +390,8 @@ job object.  The latter is mainly useful to check timestamps,
 which you can get from this form:
 
     \(el-job-old-timestamps JOB)
+
+EVAL is a list of forms to eval once, just after loading LOAD-FEATURES.
 
 
 ID is a symbol identifying this job.  It has several purposes:
@@ -462,6 +468,7 @@ For debugging, see these commands:
             (let ((new-spawn-args (list job
                                         load-features
                                         inject-vars
+                                        eval
                                         funcall-per-input)))
               (unless (= (sxhash (cdr .spawn-args))
                          (sxhash (cdr new-spawn-args)))
@@ -476,7 +483,7 @@ For debugging, see these commands:
                 (el-job-old--exec-workload job)))))))))
 
 (defvar-local el-job-old-here nil)
-(defun el-job-old--spawn-processes (job load-features inject-vars funcall-per-input)
+(defun el-job-old--spawn-processes (job load-features inject-vars eval funcall-per-input)
   "Spin up processes for JOB, standing by for input.
 For arguments LOAD-FEATURES INJECT-VARS FUNCALL-PER-INPUT,
 see `el-job-old-launch'."
@@ -493,6 +500,7 @@ see `el-job-old-launch'."
                          else collect var)))
          (libs (prin1-to-string
                 (mapcar #'el-job-old--ensure-compiled-lib load-features)))
+         (forms (prin1-to-string eval))
          (command
           (list
            (file-name-concat invocation-directory invocation-name)
@@ -532,6 +540,8 @@ see `el-job-old-launch'."
                   (process-send-string proc vars)
                   (process-send-string proc "\n")
                   (process-send-string proc libs)
+                  (process-send-string proc "\n")
+                  (process-send-string proc forms)
                   (process-send-string proc "\n"))
                 (push proc .ready)))
           ;; https://github.com/meedstrom/org-node/issues/75

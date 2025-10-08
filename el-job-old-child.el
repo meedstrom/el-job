@@ -49,11 +49,14 @@ add that information to the final return value."
   ;; from parent.  Could also use just `read', but that prints an unnecessary
   ;; "Lisp expression: " into parent's process buffer it'd have to clean up.
   (let ((vars (read-minibuffer ""))
-        (libs (read-minibuffer "")))
+        (libs (read-minibuffer ""))
+        (forms (read-minibuffer "")))
     (dolist (var vars)
       (set (car var) (cdr var)))
     (dolist (lib libs)
-      (load lib)))
+      (load lib))
+    (dolist (form forms)
+      (eval form t)))
   (catch 'die
     (let ((current-time-list nil) ;; Fewer cons cells
           input)
