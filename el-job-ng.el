@@ -359,7 +359,9 @@ ID can also be passed to these helpers:
           ((and (eq (process-status proc) 'exit)
                 (eq (process-exit-status proc) 0)
                 (equal event "finished\n"))
-           ;; NOTE: No particular buffer should be current now.
+           ;; NOTE: No particular buffer should be current now, because this
+           ;; may run the user-provided callback which should be free to do
+           ;; whatever to the window configuration.
            (el-job-ng--handle-finished-child proc buf job)
            (when (and (= 0 el-job-ng--debug-lvl)
                       (buffer-live-p buf))
