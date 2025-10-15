@@ -366,7 +366,10 @@ ID can also be passed to these helpers:
              (kill-buffer buf)))
 
           (t
-           (lwarn 'el-job-ng :warning "%s" info)
+           (lwarn 'el-job-ng :warning "%s"
+                  (concat info
+                          (format "\ntip:         check the hidden buffer named (note leading space): \"%s\""
+                                  (buffer-name (el-job-ng--job-stderr job)))))
            (el-job-ng-kill-keep-bufs (el-job-ng--job-id job))))))
 
 (defun el-job-ng--handle-finished-child (proc buf job)
