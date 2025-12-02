@@ -25,7 +25,7 @@
 (defvar el-job-old-major-version 2
   "Number incremented for breaking changes.")
 
-(defvar el-job-old-internal-version 100
+(defvar el-job-old-internal-version 101
   "Number sometimes incremented when the developer feels like it.")
 
 
