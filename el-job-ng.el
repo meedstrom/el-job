@@ -39,15 +39,16 @@ if making too many processes, so capping it can help."
 
 ;;; Subroutines
 
-(defvar el-job-ng--debug-lvl 0
+(define-obsolete-variable-alias 'el-job-ng--debug-lvl 'el-job-ng--debug-level "2.7.0 (2026-01-21)")
+(defvar el-job-ng--debug-level 0
   "Increase this to 1 or 2 to see more debug messages.")
 
 (defun el-job-ng--dbg (level fmt &rest args)
   "Maybe pass FMT and ARGS to `message'.
-LEVEL is the threshold that `el-job-ng--debug-lvl' should meet or exceed
+LEVEL is the threshold that `el-job-ng--debug-level' should meet or exceed
 to unlock this message."
   (declare (indent 1))
-  (when (<= level el-job-ng--debug-lvl)
+  (when (<= level el-job-ng--debug-level)
     (apply #'message (concat "el-job-ng: " fmt) args)))
 
 (defun el-job-ng--split-evenly (big-list n &optional _)
@@ -358,7 +359,7 @@ ID can also be passed to these helpers:
            ;; may run the user-provided callback which should be free to do
            ;; whatever to the window configuration.
            (el-job-ng--handle-finished-child proc buf job)
-           (when (and (= 0 el-job-ng--debug-lvl)
+           (when (and (= 0 el-job-ng--debug-level)
                       (buffer-live-p buf))
              (kill-buffer buf)))
 
@@ -472,10 +473,10 @@ MAX-SECS and MESSAGE as in `el-job-ng-sit-until'."
   (clrhash el-job-ng--jobs))
 
 (defun el-job-ng-cycle-debug ()
-  "Cycle through values for `el-job-ng--debug-lvl'."
+  "Cycle through values for `el-job-ng--debug-level'."
   (interactive)
-  (message "Variable `el-job-ng--debug-lvl' set to %d"
-           (setq el-job-ng--debug-lvl (% (1+ el-job-ng--debug-lvl) 3))))
+  (message "Variable `el-job-ng--debug-level' set to %d"
+           (setq el-job-ng--debug-level (% (1+ el-job-ng--debug-level) 3))))
 
 (cl-defun el-job-ng-run-sync (&key id
                                    inject-vars
