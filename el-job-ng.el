@@ -168,7 +168,6 @@ with one character of your choosing, such as a dot."
 ;;; Entry point
 
 (defvar el-job-ng--jobs (make-hash-table :test #'eq))
-(defvar el-job-ng--debug-last-splits nil)
 (defvar-local el-job-ng--job-here nil)
 (cl-defstruct (el-job-ng--job (:constructor el-job-ng--make-job)
                               (:copier nil))
@@ -244,7 +243,6 @@ ID can also be passed to these helpers:
       (setf .processes nil)
       (setf .callback callback)
       (setf .outputs nil)
-      (setq el-job-ng--debug-last-splits nil)
       ;; https://github.com/meedstrom/org-node/issues/98
       (with-temp-buffer
         (let* ((print-length nil)
@@ -281,7 +279,6 @@ ID can also be passed to these helpers:
                       "--funcall" "el-job-ng--child-work")))
           (setf .stderr (get-buffer-create (format " *el-job-ng:%s:err*" id) t))
           (with-current-buffer .stderr (erase-buffer))
-          (setq el-job-ng--debug-last-splits input-sets)
           (condition-case err
               (dotimes (i n)
                 (let ((proc (make-process
@@ -303,8 +300,6 @@ ID can also be passed to these helpers:
                             func "\n"
                             (prin1-to-string (pop input-sets)) "\n")
                     (process-send-region proc (point-min) (point-max))
-                    (when (>= el-job-ng--debug-lvl 2)
-                      (clone-buffer (format "*cloned: %s*" (buffer-name))))
                     (erase-buffer))))
             ;; https://github.com/meedstrom/org-node/issues/75
             (( file-error )
