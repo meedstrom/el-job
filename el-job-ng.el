@@ -460,9 +460,6 @@ Otherwise, a keyboard quit would let it continue in the background."
   (when-let* ((job (el-job-ng-job id)))
     (el-job-ng--job-processes job)))
 
-(defun el-job-ng-job (id)
-  (gethash id el-job-ng--jobs))
-
 
 ;;; Debug tools
 
