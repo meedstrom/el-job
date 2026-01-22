@@ -219,6 +219,10 @@ ID can also be passed to these helpers:
            when (and (numberp id) (not (el-job-ng-busy-p id)))
            do (remhash id el-job-ng--jobs))
 
+  (setq inject-vars (append (el-job-ng-vars '(temporary-file-directory
+                                              load-path
+                                              native-comp-eln-load-path))
+                            inject-vars))
   (setq id (or id (abs (random))))
   (let ((job (or (gethash id el-job-ng--jobs)
                  (puthash id (el-job-ng--make-job :id id) el-job-ng--jobs))))
@@ -236,14 +240,7 @@ ID can also be passed to these helpers:
                ;; https://github.com/jwiegley/emacs-async/issues/165
                (coding-system-for-write 'utf-8-emacs-unix)
                (coding-system-for-read 'utf-8-emacs-unix)
-               (vars (prin1-to-string
-                      (append (list (cons 'temporary-file-directory temporary-file-directory)
-                                    (cons 'load-path load-path))
-                              (and (boundp 'native-comp-eln-load-path)
-                                   (list
-                                    (cons 'native-comp-eln-load-path native-comp-eln-load-path)))
-                              ;; NOTE: These go last so they can override the above.
-                              inject-vars)))
+               (vars (prin1-to-string inject-vars))
                (libs (prin1-to-string require))
                (forms (prin1-to-string eval))
                (func (prin1-to-string funcall-per-input))
