@@ -25,6 +25,7 @@
 
 (require 'cl-lib)
 
+;; https://github.com/meedstrom/el-job/pull/5
 (defcustom el-job-ng-max-cores
   (max 1 (- (if (eq system-type 'windows-nt)
                 (/ (num-processors) 2)
@@ -120,7 +121,8 @@ In other words, this equals LIST:
           (nreverse sublists)))))))
 
 (defun el-job-ng--locate-lib (name)
-  "Try to find the full .eln or .elc filename for library NAME."
+  "Try to find the full .eln or .elc filename for library NAME.
+Unlike `locate-library', this can actually find the .eln."
   (let ((el (and (native-comp-available-p)
                  (locate-file name load-path '(".el" ".el.gz")))))
     (or (and el (comp-lookup-eln el))
@@ -128,11 +130,13 @@ In other words, this equals LIST:
         (error "el-job-ng: Library not found: %S" name))))
 
 (defmacro el-job-ng--with (job slots &rest body)
-  "Make SLOTS expand into object accessors for `el-job-ng' JOB inside BODY.
+  "Make SLOTS expand into object accessors for JOB inside BODY.
 Cf. `with-slots' in the \"eieio\" library, or `let-alist'.
 
-For clarity inside BODY, each symbol name in SLOTS must be prepended
-with one character of your choosing, such as a dot."
+JOB is an object of type `el-job-ng--job'.
+Each symbol name in SLOTS must be prepended with one character of your
+choosing, such as a dot, so e.g. `.id' for \(el-job-ng--job-id job).
+The extra character is meant to aid reading clarity inside BODY."
   (declare (indent 2) (debug (sexp sexp &rest form)))
   `(cl-symbol-macrolet
        ,(cl-loop
@@ -176,7 +180,7 @@ At a glance:
    on each item and collecting the return values.
 
 3. When all processes finish, append the lists of return values and pass
-   that to CALLBACK \(funcalled precisely once\) in the main process.
+   that to CALLBACK, a function called precisely once.
    In other words, CALLBACK should be expected to receive one list that
    is equal in length to INPUTS.
 
@@ -190,12 +194,13 @@ Details:
   It is passed two arguments: the current item, and the remaining items.
   \(You probably will not need the second argument.\)
 
-Finally, ID is an optional symbol.  It has two effects:
+Finally, ID is an optional symbol.  Passing an ID has two effects:
 - Automatically cancel a running job with the same ID, before starting.
 - Use benchmarks from previous runs to better balance the INPUTS split.
 
 ID can also be passed to these helpers:
 - `el-job-ng-await'
+- `el-job-ng-await-or-die'
 - `el-job-ng-ready-p'
 - `el-job-ng-busy-p'
 - `el-job-ng-kill'
@@ -269,6 +274,8 @@ ID can also be passed to these helpers:
                              :command command
                              :sentinel #'el-job-ng--sentinel)))
                   (push proc .processes)
+                  ;; Q: Why not a temp buffer? A: Have to `erase-buffer' in any
+                  ;; case, and this buffer is easier to peek on during edebug.
                   (with-current-buffer (process-buffer proc)
                     (erase-buffer)
                     (setq-local el-job-ng--job-here job)
@@ -285,7 +292,7 @@ ID can also be passed to these helpers:
              (el-job-ng--dbg 1 "Terminated because of: %S" err))))))))
 
 
-;;; Child: code run inside subprocess
+;;; Code used by child processes
 
 (defun el-job-ng--child-work ()
   (let* ((coding-system-for-write 'utf-8-emacs-unix)
@@ -313,9 +320,14 @@ ID can also be passed to these helpers:
       (print benchmarked-outputs))))
 
 
-;;; Sentinel: receive what the child printed for us
+;;; Sentinel; receiving what the child printed
 
 (defun el-job-ng--sentinel (proc event)
+  "Handle changed state of a child process.
+
+If PROC and EVENT look like the process is done,
+assume the process buffer contains a readable Lisp expression
+and run `el-job-ng--handle-finished-child'."
   (let* ((info (concat (format "Process %s" event)
                        (format "status:      '%S\n" (process-status proc))
                        (format "exit status: %d\n" (process-exit-status proc))
@@ -361,8 +373,8 @@ ID can also be passed to these helpers:
       (when (numberp .id) ;; Clean up anonymous job
         (remhash .id el-job-ng--jobs))
       (when .callback
-        ;; Allow quitting out of a hung or slow CALLBACK.
-        ;; A process sentinel ordinarily does not allow quitting at all.
+        ;; Allow quitting out of a hung or slow CALLBACK.  Since we're called
+        ;; by a process sentinel, `inhibit-quit' is t at this time.
         (when (null (with-local-quit (funcall .callback .outputs) t))
           (el-job-ng--dbg 0 "Quit while executing :callback for %s" .id))))))
 
@@ -377,9 +389,8 @@ In other words, a nil return value means it has timed out.
 While blocking input to Emacs, keep MESSAGE visible in the echo area.
 MESSAGE can be a string, or a form that evaluates to a string.
 
-Neither TEST nor MESSAGE should be expensive forms, since they are
-evaluated repeatedly and cannot themselves trigger the time-out if they
-should happen to be expensive.
+Both TEST and MESSAGE should be cheap forms, since they are evaluated
+repeatedly and cannot themselves trigger the time-out if they hang.
 A typical TEST would check if something in the environment has changed."
   (let ((deadline (gensym "deadline"))
         (last (gensym "last")))
@@ -396,8 +407,7 @@ A typical TEST would check if something in the environment has changed."
        ,last)))
 
 (defun el-job-ng-await (id max-secs &optional message)
-  "Like `el-job-ng-sit-until' but take ID and return t if job finishes.
-MAX-SECS and MESSAGE as in `el-job-ng-sit-until'."
+  "Like `el-job-ng-sit-until' but take ID and return t if job finishes."
   (el-job-ng-sit-until (el-job-ng-ready-p id) max-secs message))
 
 (defun el-job-ng-await-or-die (id max-secs &optional message)
