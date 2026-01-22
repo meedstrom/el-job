@@ -187,7 +187,7 @@ At a glance:
 Details:
 - INJECT-VARS is an alist of symbols and values to pass to `set'.
   It has some default members, including `load-path'.
-- REQUIRE is a list of symbols like `features'.
+- REQUIRE is a list of symbols for `require' or strings for `load'.
 - EVAL is a list of quoted forms.
 - FUNCALL-PER-INPUT must be a symbol with a function definition,
   not an anonymous lambda.
@@ -307,7 +307,7 @@ ID can also be passed to these helpers:
     (dolist (var vars)
       (set (car var) (cdr var)))
     (dolist (lib libs)
-      (require lib))
+      (if (stringp lib) (load lib nil t) (require lib)))
     (dolist (form forms)
       (eval form t))
     (while-let ((input (pop inputs)))
