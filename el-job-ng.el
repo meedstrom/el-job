@@ -150,7 +150,6 @@ The extra character is meant to aid reading clarity inside BODY."
 ;;; Entry point
 
 (defvar el-job-ng--jobs (make-hash-table :test #'eq))
-(defvar-local el-job-ng--job-here nil)
 (cl-defstruct (el-job-ng--job (:constructor el-job-ng--make-job)
                               (:copier nil))
   id
@@ -278,7 +277,6 @@ ID can also be passed to these helpers:
                   ;; case, and this buffer is easier to peek on during edebug.
                   (with-current-buffer (process-buffer proc)
                     (erase-buffer)
-                    (setq-local el-job-ng--job-here job)
                     (insert vars "\n"
                             libs "\n"
                             forms "\n"
@@ -333,7 +331,7 @@ and run `el-job-ng--handle-finished-child'."
                        (format "exit status: %d\n" (process-exit-status proc))
                        (format "buffer:      %S" (process-buffer proc))))
          (buf (process-buffer proc))
-         (job (buffer-local-value 'el-job-ng--job-here buf)))
+         (job (el-job-ng-get-job proc)))
     (cl-assert job)
     (cond ((or (eq (process-status proc) 'run)
                (equal event "killed\n")
