@@ -351,10 +351,7 @@ and run `el-job-ng--handle-finished-child'."
            ;; NOTE: No particular buffer should be current now, because this
            ;; may run the user-provided callback which should be free to do
            ;; whatever to the window configuration.
-           (el-job-ng--handle-finished-child proc buf job)
-           (when (and (= 0 el-job-ng--debug-level)
-                      (buffer-live-p buf))
-             (kill-buffer buf)))
+           (el-job-ng--handle-finished-child proc buf job))
 
           (t
            (el-job-ng--dbg 0 "%s" info+tip)
@@ -369,7 +366,9 @@ and run `el-job-ng--handle-finished-child'."
       (goto-char (point-min))
       (cl-loop for (input duration output) in (read (current-buffer)) do
                (puthash input duration .benchmarks-tbl)
-               (push output .outputs)))
+               (push output .outputs))
+      (when (= 0 el-job-ng--debug-level)
+        (kill-buffer)))
     (when (null .processes)
       (when (numberp .id) ;; Clean up anonymous job
         (remhash .id el-job-ng--jobs))
