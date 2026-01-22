@@ -153,11 +153,10 @@ The extra character is meant to aid reading clarity inside BODY."
 (cl-defstruct (el-job-ng--job (:constructor el-job-ng--make-job)
                               (:copier nil))
   id
-  processes
+  process-outputs
   stderr
-  callback
   (benchmarks-tbl (make-hash-table :test #'equal))
-  outputs)
+  callback)
 
 ;;;###autoload
 (cl-defun el-job-ng-run (&key id
@@ -223,13 +222,11 @@ ID can also be passed to these helpers:
   (setq id (or id (abs (random))))
   (let ((job (or (gethash id el-job-ng--jobs)
                  (puthash id (el-job-ng--make-job :id id) el-job-ng--jobs))))
-    (el-job-ng--with job (.processes .benchmarks-tbl .callback .outputs .stderr)
+    (el-job-ng--with job (.process-outputs .benchmarks-tbl .callback .stderr)
       ;; Cancel any currently-running job with same ID
-      (dolist (proc .processes)
+      (while-let ((proc (car (pop .process-outputs))))
         (delete-process proc))
-      (setf .processes nil)
       (setf .callback callback)
-      (setf .outputs nil)
       ;; https://github.com/meedstrom/org-node/issues/98
       (with-temp-buffer
         (let* ((print-length nil)
@@ -277,7 +274,7 @@ ID can also be passed to these helpers:
                                       (format " *el-job-ng:%s:%d*" id i) t)
                              :command command
                              :sentinel #'el-job-ng--sentinel)))
-                  (push proc .processes)
+                  (push (cons proc nil) .process-outputs)
                   ;; Q: Why not a temp buffer? A: Have to `erase-buffer' in any
                   ;; case, and this buffer is easier to peek on during edebug.
                   (with-current-buffer (process-buffer proc)
@@ -320,7 +317,7 @@ ID can also be passed to these helpers:
     (let ((print-length nil)
           (print-level nil)
           (print-circle t))
-      (print benchmarked-outputs))))
+      (print (nreverse benchmarked-outputs)))))
 
 
 ;;; Sentinel; receiving what the child printed
@@ -363,22 +360,24 @@ and run `el-job-ng--handle-finished-child'."
            (el-job-ng-kill-keep-bufs id)))))
 
 (defun el-job-ng--handle-finished-child (proc buf job)
-  (el-job-ng--with job (.id .processes .benchmarks-tbl .outputs .callback)
-    (setf .processes (delq proc .processes))
+  (el-job-ng--with job (.id .process-outputs .callback .benchmarks-tbl)
     (with-current-buffer buf
       (unless (and (eobp) (> (point) 2) (eq (char-before) ?\n))
         (error "Process output looks incomplete or point moved"))
-      (goto-char (point-min))
-      (cl-loop for (input duration output) in (read (current-buffer)) do
-               (puthash input duration .benchmarks-tbl)
-               (push output .outputs))
+      (setcdr (assq proc .process-outputs)
+              (cl-loop for (input benchmark output) in (read (buffer-string))
+                       do (puthash input benchmark .benchmarks-tbl)
+                       and collect output))
+      (setcar (assq proc .process-outputs) nil)
       (when (= 0 el-job-ng--debug-level)
         (kill-buffer)))
-    (when (null .processes)
-      (when .callback
+    ;; Last child
+    (when (and .callback (cl-every #'null (mapcar #'car .process-outputs)))
+      (let ((outputs (prog1 (mapcan #'cdr .process-outputs)
+                       (setf .process-outputs nil))))
         ;; Allow quitting out of a hung or slow CALLBACK.  Since we're called
         ;; by a process sentinel, `inhibit-quit' is t at this time.
-        (when (null (with-local-quit (funcall .callback .outputs) t))
+        (when (null (with-local-quit (funcall .callback outputs) t))
           (el-job-ng--dbg 0 "Quit while executing :callback for %s" .id))))))
 
 
@@ -456,13 +455,13 @@ Otherwise, a keyboard quit would let it continue in the background."
 
 (defun el-job-ng-processes (id)
   (let ((job (el-job-ng-get-job id)))
-    (and job (el-job-ng--job-processes job))))
+    (and job (mapcar #'car (el-job-ng--job-process-outputs job)))))
 
 (define-obsolete-function-alias 'el-job-ng-job 'el-job-ng-get-job "2026-01-22")
 (defun el-job-ng-get-job (id-or-process)
   (if (processp id-or-process)
       (cl-loop for job being each hash-value of el-job-ng--jobs
-               when (memq id-or-process (el-job-ng--processes job))
+               when (assq id-or-process (el-job-ng--job-process-outputs job))
                return job)
     (gethash id-or-process el-job-ng--jobs)))
 
