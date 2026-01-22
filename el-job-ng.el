@@ -326,12 +326,14 @@ ID can also be passed to these helpers:
 If PROC and EVENT look like the process is done,
 assume the process buffer contains a readable Lisp expression
 and run `el-job-ng--handle-finished-child'."
-  (let* ((info (concat (format "Process %s" event)
+  (let* ((buf (process-buffer proc))
+         (job (el-job-ng-get-job proc))
+         (id (el-job-ng--job-id job))
+         (info (concat (format "Process %s" event)
                        (format "status:      '%S\n" (process-status proc))
                        (format "exit status: %d\n" (process-exit-status proc))
-                       (format "buffer:      %S" (process-buffer proc))))
-         (buf (process-buffer proc))
-         (job (el-job-ng-get-job proc)))
+                       (format "buffer:      %S\n" buf)
+                       (format "el-job id:   %S" id))))
     (cl-assert job)
     (cond ((or (eq (process-status proc) 'run)
                (equal event "killed\n")
