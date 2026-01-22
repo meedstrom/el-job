@@ -337,7 +337,6 @@ and run `el-job-ng--handle-finished-child'."
          (info+tip (concat info "\n"
                            (format "tip:         check the hidden buffer named (note leading space): \"%s\""
                                    (buffer-name (el-job-ng-stderr id))))))
-    (cl-assert job)
     (cond ((or (eq (process-status proc) 'run)
                (equal event "killed\n")
                (equal event "deleted\n"))
@@ -347,6 +346,8 @@ and run `el-job-ng--handle-finished-child'."
           ((and (eq (process-status proc) 'exit)
                 (eq (process-exit-status proc) 0)
                 (equal event "finished\n"))
+           (cl-assert (buffer-live-p buf))
+           (cl-assert (not (process-live-p proc)))
            ;; NOTE: No particular buffer should be current now, because this
            ;; may run the user-provided callback which should be free to do
            ;; whatever to the window configuration.
