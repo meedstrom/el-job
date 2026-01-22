@@ -51,96 +51,73 @@ to unlock this message."
   (when (<= level el-job-ng--debug-level)
     (apply #'message (concat "el-job-ng: " fmt) args)))
 
-(defun el-job-ng--split-evenly (big-list n &optional _)
-  "Split BIG-LIST into a list of up to N sublists.
+(defun el-job-ng--split-evenly (list n-slices &optional _)
+  "Split LIST into up to N-SLICES sublists."
+  (and list (seq-split list (ceiling (/ (length list) (float n-slices))))))
 
-If BIG-LIST is not big but contains N or fewer elements,
-the consequence looks just like BIG-LIST except that
-each element is wrapped in its own list.
+(defun el-job-ng--split-optimally (list n-slices benchmarks)
+  "Split LIST into up to N-SLICES sublists.
 
-E.g: \(1 2 3 4) becomes \((1) (2) (3) (4))."
-  (let ((sublist-length (max 1 (/ (length big-list) n)))
-        result)
-    (dotimes (i n)
-      (if (= i (1- n))
-          ;; Let the last iteration just take what's left
-          (push big-list result)
-        (push (take sublist-length big-list) result)
-        (setq big-list (nthcdr sublist-length big-list))))
-    (delq nil result)))
+If possible, use table BENCHMARKS to balance the sublists.
+This reduces the risk that one sublist acquires all the heaviest items
+from LIST, as that can make it an extreme outlier in terms of
+wall-time needed to work through it.
 
-;; Many things in life are power-law distributed, as with Org file sizes,
-;; so this winds up mattering pretty much regardless of what ITEMS is.
-(defun el-job-ng--split-optimally (items n-cores benchmarks)
-  "Split ITEMS into up to N-CORES lists of items.
+The order of elements in LIST is preserved across the sublists.
+In other words, this equals LIST:
 
-For all keys in table BENCHMARKS that match one of ITEMS, assume the
-value holds a benchmark \(a Lisp time value) for how long it took in the
-past to pass this item through the FUNCALL-PER-INPUT function specified
-in `el-job-ng-run'.
-
-Use these benchmarks to rebalance the lists so that each sub-list should
-take a similar amount of wall-time to work through.
-
-This reduces the risk that one child takes markedly longer due to
-being saddled with a huge item in addition to the average workload."
-  (let ((total-duration 0))
-    (cond
-     ((= n-cores 1)
-      (list items))
-     ((length< items (1+ n-cores))
-      (el-job-ng--split-evenly items n-cores))
-     ((progn
-        (dolist (item items)
-          (let ((dur (gethash item benchmarks)))
-            (when dur
-              (setq total-duration (time-add total-duration dur)))))
-        (eq total-duration 0))
-      ;; Probably a first-time run
-      (el-job-ng--split-evenly items n-cores))
-     (t
-      (let ((max-per-core (/ (float-time total-duration) n-cores))
-            (this-sublist-sum 0)
-            this-sublist
-            sublists
-            untimed
-            dur
-            item)
-        (catch 'filled
-          (while (setq item (pop items))
-            (if (length= sublists n-cores)
-                (progn (push item items)
-                       (throw 'filled t))
-              (setq dur (gethash item benchmarks))
-              (if (null dur)
-                  (push item untimed)
-                (setq dur (float-time dur))
-                (if (> dur max-per-core)
-                    ;; Dedicate huge items to their own cores
-                    (push (list item) sublists)
-                  ;; Grow a sublist unless it would exceed the max
-                  (if (< dur (- max-per-core this-sublist-sum))
-                      (progn
-                        (push item this-sublist)
-                        (setq this-sublist-sum (+ this-sublist-sum dur)))
-                    ;; This sublist hit max, so it's done.  Cleanup for next
-                    ;; iteration, which will begin a new sublist (or throw).
-                    (push this-sublist sublists)
-                    (setq this-sublist-sum 0)
-                    (setq this-sublist nil)
-                    (push item items)))))))
-        (when (or (length= sublists 0)
-                  (length> sublists n-cores))
-          (fset 'el-job-ng--split-optimally #'el-job-ng--split-evenly)
-          (error "Internal coding mistake, degrading gracefully from now"))
-        ;; Spread leftovers evenly
-        (let ((ctr 0)
-              (len (length sublists)))
-          (dolist (item (nconc this-sublist untimed items))
-            (push item (nth
-                        (% (cl-incf ctr) len)
-                        sublists))))
-        sublists)))))
+   \(apply \\='append (el-job-ng-split-optimally LIST ...)))"
+  (cond
+   ((null list) nil)
+   ((= n-slices 1) (list list))
+   ((or (= 0 (hash-table-count benchmarks))
+        (length< list (1+ n-slices)))
+    (el-job-ng--split-evenly list n-slices))
+   ((let* ((dur-total 0)
+           (n-benchmarks 0)
+           (n-not-benchmarked 0)
+           (items-and-durations
+            (cl-loop for item in list
+                     as benchmark = (gethash item benchmarks)
+                     collect (cons item (and benchmark (float-time benchmark)))
+                     if benchmark
+                     do (progn
+                          (cl-incf n-benchmarks)
+                          (setq dur-total (time-add dur-total benchmark)))
+                     else do (cl-incf n-not-benchmarked)
+                     finally do (setq dur-total (float-time dur-total)))))
+      (if (= 0 n-benchmarks)
+          (el-job-ng--split-evenly list n-slices)
+        (let* ((dur-mean (/ dur-total n-benchmarks))
+               (max-per-slice (/ (+ dur-total (* n-not-benchmarked dur-mean))
+                                 n-slices))
+               (sum 0)
+               sublist
+               sublists)
+          (cl-loop
+           while items-and-durations
+           as (item . dur) = (pop items-and-durations)
+           do (progn
+                (when (and sublist dur (> dur max-per-slice))
+                  ;; An item exceeding max by itself must get a dedicated process,
+                  ;; because we will likely be still waiting on that process after
+                  ;; the rest have finished, even with the dedication!
+                  ;; So finish the current sublist early, it's worth it.
+                  (push (nreverse sublist) sublists)
+                  (setq sublist nil)
+                  (setq sum 0))
+                (push item sublist)
+                (cl-incf sum (or dur dur-mean))
+                (when (> sum max-per-slice)
+                  (push (nreverse sublist) sublists)
+                  (setq sublist nil)
+                  (setq sum 0)))
+           finally do (when sublist
+                        (push (nreverse sublist) sublists)))
+          (when (> (length sublists) n-slices)
+            (fset #'el-job-ng--split-optimally #'el-job-ng--split-evenly)
+            (error "el-job: Internal error, degrading gracefully from now on"))
+          (nreverse sublists)))))))
 
 (defun el-job-ng--locate-lib (name)
   "Try to find the full .eln or .elc filename for library NAME."
