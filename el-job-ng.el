@@ -215,6 +215,11 @@ ID can also be passed to these helpers:
   (cl-loop for (var . val) in inject-vars
            when (string-prefix-p "#" (readablep val))
            do (error "Cannot inject variable `%s' with value: %s" var val))
+  ;; Clean-up defunct anonymous jobs
+  (cl-loop for id being each hash-key of el-job-ng--jobs
+           when (and (numberp id) (not (el-job-ng-busy-p id)))
+           do (remhash id el-job-ng--jobs))
+
   (setq id (or id (abs (random))))
   (let ((job (or (gethash id el-job-ng--jobs)
                  (puthash id (el-job-ng--make-job :id id) el-job-ng--jobs))))
@@ -370,8 +375,6 @@ and run `el-job-ng--handle-finished-child'."
       (when (= 0 el-job-ng--debug-level)
         (kill-buffer)))
     (when (null .processes)
-      (when (numberp .id) ;; Clean up anonymous job
-        (remhash .id el-job-ng--jobs))
       (when .callback
         ;; Allow quitting out of a hung or slow CALLBACK.  Since we're called
         ;; by a process sentinel, `inhibit-quit' is t at this time.
@@ -440,16 +443,12 @@ Otherwise, a keyboard quit would let it continue in the background."
         (delete-process proc))))
   (let ((stderr (el-job-ng-stderr id)))
     (when (buffer-live-p stderr)
-      (kill-buffer stderr)))
-  (when (numberp id) ;; Clean up anonymous job
-    (remhash id el-job-ng--jobs)))
+      (kill-buffer stderr))))
 
 (defun el-job-ng-kill-keep-bufs (id)
   "Kill processes for job ID."
   (dolist (proc (el-job-ng-processes id))
-    (delete-process proc))
-  (when (numberp id)  ;; Clean up anonymous job
-    (remhash id el-job-ng--jobs)))
+    (delete-process proc)))
 
 (defun el-job-ng-stderr (id)
   (let ((job (el-job-ng-get-job id)))
