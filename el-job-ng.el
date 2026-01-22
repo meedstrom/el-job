@@ -24,6 +24,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'eieio)
 
 ;; https://github.com/meedstrom/el-job/pull/5
 (defcustom el-job-ng-max-cores
@@ -129,34 +130,16 @@ Unlike `locate-library', this can actually find the .eln."
         (locate-library name)
         (error "el-job-ng: Library not found: %S" name))))
 
-(defmacro el-job-ng--with (job slots &rest body)
-  "Make SLOTS expand into object accessors for JOB inside BODY.
-Cf. `with-slots' in the \"eieio\" library, or `let-alist'.
-
-JOB is an object of type `el-job-ng--job'.
-Each symbol name in SLOTS must be prepended with one character of your
-choosing, such as a dot, so e.g. `.id' for \(el-job-ng--job-id job).
-The extra character is meant to aid reading clarity inside BODY."
-  (declare (indent 2) (debug (sexp sexp &rest form)))
-  `(cl-symbol-macrolet
-       ,(cl-loop
-         for slot in slots
-         collect `(,slot (,(intern (concat "el-job-ng--job-"
-                                           (substring (symbol-name slot) 1)))
-                          ,job)))
-     ,@body))
-
 
 ;;; Entry point
 
 (defvar el-job-ng--jobs (make-hash-table :test #'eq))
-(cl-defstruct (el-job-ng--job (:constructor el-job-ng--make-job)
-                              (:copier nil))
-  id
-  process-outputs
-  stderr
-  (benchmarks-tbl (make-hash-table :test #'equal))
-  callback)
+(defclass el-job-ng-job ()
+  ((id              :initarg :id)
+   (stderr          :initform nil)
+   (callback        :initform nil)
+   (process-outputs :initform nil)
+   (benchmarks      :initform (make-hash-table :test 'equal))))
 
 ;;;###autoload
 (cl-defun el-job-ng-run (&key id
@@ -223,13 +206,13 @@ ID can also be passed to these helpers:
                                               native-comp-eln-load-path))
                             inject-vars))
   (setq id (or id (abs (random))))
-  (let ((job (or (gethash id el-job-ng--jobs)
-                 (puthash id (el-job-ng--make-job :id id) el-job-ng--jobs))))
-    (el-job-ng--with job (.process-outputs .benchmarks-tbl .callback .stderr)
+  (let ((job (with-memoization (gethash id el-job-ng--jobs)
+               (make-instance 'el-job-ng-job :id id))))
+    (oset job callback callback)
+    (with-slots (process-outputs benchmarks stderr) job
       ;; Cancel any currently-running job with same ID
-      (while-let ((proc (car (pop .process-outputs))))
+      (while-let ((proc (car (pop process-outputs))))
         (delete-process proc))
-      (setf .callback callback)
       ;; https://github.com/meedstrom/org-node/issues/98
       (with-temp-buffer
         (let* ((print-length nil)
@@ -246,7 +229,7 @@ ID can also be passed to these helpers:
                (input-sets
                 (el-job-ng--split-optimally inputs
                                             el-job-ng-max-cores
-                                            .benchmarks-tbl))
+                                            benchmarks))
                (n (length input-sets))
                ;; Ensure a local working directory.
                ;; https://github.com/meedstrom/org-node/issues/46
@@ -257,20 +240,20 @@ ID can also be passed to these helpers:
                       "--batch"
                       "--load" (el-job-ng--locate-lib "el-job-ng")
                       "--funcall" "el-job-ng--child-work")))
-          (setf .stderr (get-buffer-create (format " *el-job-ng:%s:err*" id) t))
-          (with-current-buffer .stderr (erase-buffer))
+          (setf stderr (get-buffer-create (format " *el-job-ng:%s:err*" id) t))
+          (with-current-buffer stderr (erase-buffer))
           (condition-case err
               (dotimes (i n)
                 (let ((proc (make-process
                              :name (format "el-job-ng:%s:%d" id i)
                              :noquery t
                              :connection-type 'pipe
-                             :stderr .stderr
+                             :stderr stderr
                              :buffer (get-buffer-create
                                       (format " *el-job-ng:%s:%d*" id i) t)
                              :command command
                              :sentinel #'el-job-ng--sentinel)))
-                  (push (cons proc nil) .process-outputs)
+                  (push (cons proc nil) process-outputs)
                   ;; Q: Why not a temp buffer? A: Have to `erase-buffer' in any
                   ;; case, and this buffer is easier to peek on during edebug.
                   (with-current-buffer (process-buffer proc)
@@ -326,7 +309,7 @@ assume the process buffer contains a readable Lisp expression
 and run `el-job-ng--handle-finished-child'."
   (let* ((buf (process-buffer proc))
          (job (el-job-ng-get-job proc))
-         (id (el-job-ng--job-id job))
+         (id (oref job id))
          (info (concat (format "Process %s" event) ;; EVENT contains "\n"
                        (format "status:      %S\n" (process-status proc))
                        (format "exit status: %d\n" (process-exit-status proc))
@@ -356,25 +339,25 @@ and run `el-job-ng--handle-finished-child'."
            (el-job-ng-kill-keep-bufs id)))))
 
 (defun el-job-ng--handle-finished-child (proc buf job)
-  (el-job-ng--with job (.id .process-outputs .callback .benchmarks-tbl)
+  (with-slots (id process-outputs callback benchmarks) job
     (with-current-buffer buf
       (unless (and (eobp) (> (point) 2) (eq (char-before) ?\n))
         (error "Process output looks incomplete or point moved"))
-      (setcdr (assq proc .process-outputs)
+      (setcdr (assq proc process-outputs)
               (cl-loop for (input benchmark output) in (read (buffer-string))
-                       do (puthash input benchmark .benchmarks-tbl)
+                       do (puthash input benchmark benchmarks)
                        and collect output))
-      (setcar (assq proc .process-outputs) nil)
+      (setcar (assq proc process-outputs) nil)
       (when (= 0 el-job-ng--debug-level)
         (kill-buffer)))
     ;; Last child
-    (when (and .callback (cl-every #'null (mapcar #'car .process-outputs)))
-      (let ((outputs (prog1 (mapcan #'cdr .process-outputs)
-                       (setf .process-outputs nil))))
+    (when (and callback (cl-every #'null (mapcar #'car process-outputs)))
+      (let ((outputs (prog1 (mapcan #'cdr process-outputs)
+                       (setf process-outputs nil))))
         ;; Allow quitting out of a hung or slow CALLBACK.  Since we're called
         ;; by a process sentinel, `inhibit-quit' is t at this time.
-        (when (null (with-local-quit (funcall .callback outputs) t))
-          (el-job-ng--dbg 0 "Quit while executing :callback for %s" .id))))))
+        (when (null (with-local-quit (funcall callback outputs) t))
+          (el-job-ng--dbg 0 "Quit while executing :callback for %s" id))))))
 
 
 ;;; API
@@ -447,17 +430,16 @@ Otherwise, a keyboard quit would let it continue in the background."
 
 (defun el-job-ng-stderr (id)
   (let ((job (el-job-ng-get-job id)))
-    (and job (el-job-ng--job-stderr job))))
+    (and job (oref job stderr))))
 
 (defun el-job-ng-processes (id)
   (let ((job (el-job-ng-get-job id)))
-    (and job (mapcar #'car (el-job-ng--job-process-outputs job)))))
+    (and job (mapcar #'car (oref job process-outputs)))))
 
-(define-obsolete-function-alias 'el-job-ng-job 'el-job-ng-get-job "2026-01-22")
 (defun el-job-ng-get-job (id-or-process)
   (if (processp id-or-process)
       (cl-loop for job being each hash-value of el-job-ng--jobs
-               when (assq id-or-process (el-job-ng--job-process-outputs job))
+               when (assq id-or-process (oref job process-outputs))
                return job)
     (gethash id-or-process el-job-ng--jobs)))
 
