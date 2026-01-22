@@ -453,12 +453,12 @@ Otherwise, a keyboard quit would let it continue in the background."
     (remhash id el-job-ng--jobs)))
 
 (defun el-job-ng-stderr (id)
-  (when-let* ((job (el-job-ng-job id)))
-    (el-job-ng--job-stderr (el-job-ng-job id))))
+  (let ((job (el-job-ng-get-job id)))
+    (and job (el-job-ng--job-stderr job))))
 
 (defun el-job-ng-processes (id)
-  (when-let* ((job (el-job-ng-job id)))
-    (el-job-ng--job-processes job)))
+  (let ((job (el-job-ng-get-job id)))
+    (and job (el-job-ng--job-processes job))))
 
 (define-obsolete-function-alias 'el-job-ng-job 'el-job-ng-get-job "2026-01-22")
 (defun el-job-ng-get-job (id-or-process)
