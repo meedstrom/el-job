@@ -219,8 +219,7 @@ ID can also be passed to these helpers:
            when (and (numberp id) (not (el-job-ng-busy-p id)))
            do (remhash id el-job-ng--jobs))
 
-  (setq inject-vars (append (el-job-ng-vars '(temporary-file-directory
-                                              load-path
+  (setq inject-vars (append (el-job-ng-vars '(load-path
                                               native-comp-eln-load-path))
                             inject-vars))
   (setq id (or id (abs (random))))
