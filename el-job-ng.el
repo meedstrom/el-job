@@ -400,6 +400,19 @@ A typical TEST would check if something in the environment has changed."
 MAX-SECS and MESSAGE as in `el-job-ng-sit-until'."
   (el-job-ng-sit-until (el-job-ng-ready-p id) max-secs message))
 
+(defun el-job-ng-await-or-die (id max-secs &optional message)
+  "Like `el-job-ng-await', but kill the job on timeout or any signal.
+Otherwise, a keyboard quit would let it continue in the background."
+  (condition-case signal
+      (if (el-job-ng-await id max-secs message)
+          t
+        (el-job-ng-kill-keep-bufs id)
+        nil)
+    (t
+     (el-job-ng-kill id)
+     (apply #'signal signal)
+     nil)))
+
 (defun el-job-ng-ready-p (id)
   "Return t if job ID is not currently active."
   (not (el-job-ng-busy-p id)))
@@ -493,6 +506,25 @@ EVAL, INPUTS, FUNCALL-PER-INPUT, CALLBACK)."
               t)
         (when callback
           (funcall callback .outputs))))))
+
+(define-obsolete-function-alias 'el-job-ng-job 'el-job-ng-get-job "2026-01-22")
+(defun el-job-ng-get-job (id-or-process)
+  (if (processp id-or-process)
+      (cl-loop for job being each hash-value of el-job-ng--jobs
+               when (memq id-or-process (el-job-ng--processes job))
+               return job)
+    (gethash id-or-process el-job-ng--jobs)))
+
+(defun el-job-ng-vars (mixed-list &optional scope)
+  "Replace each symbol in MIXED-LIST with a cons cell \(SYMBOL . VALUE\).
+If SYMBOL is nil or not bound, it is dropped.
+Uses `symbol-value' to get VALUE.
+If an element of MIXED-LIST is already a cons cell, it is kept as-is."
+  (cl-loop for var in mixed-list
+           if (and var (symbolp var) (boundp var))
+           ;; REVIEW: Not sure about the scope thing
+           collect (cons var (if scope (eval var t) (symbol-value var)))
+           else collect var))
 
 (provide 'el-job-ng)
 
