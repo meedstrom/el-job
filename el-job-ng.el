@@ -329,11 +329,14 @@ and run `el-job-ng--handle-finished-child'."
   (let* ((buf (process-buffer proc))
          (job (el-job-ng-get-job proc))
          (id (el-job-ng--job-id job))
-         (info (concat (format "Process %s" event)
-                       (format "status:      '%S\n" (process-status proc))
+         (info (concat (format "Process %s" event) ;; EVENT contains "\n"
+                       (format "status:      %S\n" (process-status proc))
                        (format "exit status: %d\n" (process-exit-status proc))
                        (format "buffer:      %S\n" buf)
-                       (format "el-job id:   %S" id))))
+                       (format "el-job id:   %S" id)))
+         (info+tip (concat info "\n"
+                           (format "tip:         check the hidden buffer named (note leading space): \"%s\""
+                                   (buffer-name (el-job-ng-stderr id))))))
     (cl-assert job)
     (cond ((or (eq (process-status proc) 'run)
                (equal event "killed\n")
@@ -353,11 +356,8 @@ and run `el-job-ng--handle-finished-child'."
              (kill-buffer buf)))
 
           (t
-           (lwarn 'el-job-ng :warning "%s"
-                  (concat info
-                          (format "\ntip:         check the hidden buffer named (note leading space): \"%s\""
-                                  (buffer-name (el-job-ng--job-stderr job)))))
-           (el-job-ng-kill-keep-bufs (el-job-ng--job-id job))))))
+           (el-job-ng--dbg 0 "%s" info+tip)
+           (el-job-ng-kill-keep-bufs id)))))
 
 (defun el-job-ng--handle-finished-child (proc buf job)
   (el-job-ng--with job (.id .processes .benchmarks-tbl .outputs .callback)
