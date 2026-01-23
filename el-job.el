@@ -49,37 +49,11 @@
 
 (require 'el-job-ng)
 
-(define-obsolete-variable-alias 'el-job-major-version     'el-job-old-major-version    "2.7.0 (2026-01-21)")
-(define-obsolete-variable-alias 'el-job-max-cores         'el-job-old-max-cores        "2.7.0 (2026-01-21)")
-(define-obsolete-variable-alias 'el-job--debug-level      'el-job-old--debug-level     "2.7.0 (2026-01-21)")
-(define-obsolete-variable-alias 'el-job--onetime-canary   'el-job-old--onetime-canary  "2.7.0 (2026-01-21)")
-(define-obsolete-variable-alias 'el-job--all-jobs         'el-job-old--all-jobs        "2.7.0 (2026-01-21)")
-
+(define-obsolete-variable-alias 'el-job-max-cores 'el-job-old-max-cores  "2.7.0 (2026-01-21)")
 (require 'el-job-old)
-
-(define-obsolete-function-alias 'el-job-launch                      #'el-job-old-launch                       "2.7.0 (2026-01-21)")
-(define-obsolete-function-alias 'el-job-kill-all                    #'el-job-old-kill-all                     "2.7.0 (2026-01-21)")
-(define-obsolete-function-alias 'el-job-await                       #'el-job-old-await                        "2.7.0 (2026-01-21)")
-(define-obsolete-function-alias 'el-job-is-busy                     #'el-job-old-is-busy                      "2.7.0 (2026-01-21)")
-(define-obsolete-function-alias 'el-job-cycle-debug-level           #'el-job-old-cycle-debug-level            "2.7.0 (2026-01-21)")
-(define-obsolete-function-alias 'el-job-show-info                   #'el-job-old-show-info                    "2.7.0 (2026-01-21)")
-(define-obsolete-function-alias 'el-job--dbg                        #'el-job-old--dbg                         "2.7.0 (2026-01-21)")
-(define-obsolete-function-alias 'el-job--locate-lib-in-load-history #'el-job-old--locate-lib-in-load-history  "2.7.0 (2026-01-21)")
-(define-obsolete-function-alias 'el-job--ensure-compiled-lib        #'el-job-old--ensure-compiled-lib         "2.7.0 (2026-01-21)")
-(define-obsolete-function-alias 'el-job--split-evenly               #'el-job-old--split-evenly                "2.7.0 (2026-01-21)")
-(define-obsolete-function-alias 'el-job--split-optimally            #'el-job-old--split-optimally             "2.7.0 (2026-01-21)")
-(define-obsolete-function-alias 'el-job--zip-all                    #'el-job-old--zip-all                     "2.7.0 (2026-01-21)")
-(define-obsolete-function-alias 'el-job--windows-cores              #'el-job-old--windows-cores               "2.7.0 (2026-01-21)")
-(define-obsolete-function-alias 'el-job--with                       #'el-job-old--with                        "2.7.0 (2026-01-21)")
-(define-obsolete-function-alias 'el-job--spawn-processes            #'el-job-old--spawn-processes             "2.7.0 (2026-01-21)")
-(define-obsolete-function-alias 'el-job--exec-workload              #'el-job-old--exec-workload               "2.7.0 (2026-01-21)")
-(define-obsolete-function-alias 'el-job--poll                       #'el-job-old--poll                        "2.7.0 (2026-01-21)")
-(define-obsolete-function-alias 'el-job--reap                       #'el-job-old--reap                        "2.7.0 (2026-01-21)")
-(define-obsolete-function-alias 'el-job--handle-output              #'el-job-old--handle-output               "2.7.0 (2026-01-21)")
-(define-obsolete-function-alias 'el-job--disable                    #'el-job-old--disable                     "2.7.0 (2026-01-21)")
-(define-obsolete-function-alias 'el-job--sit-until-not              #'el-job-old--sit-until-not               "2.7.0 (2026-01-21)")
-
-(defvar el-jobs :obsolete)
+(define-obsolete-function-alias 'el-job-launch  #'el-job-old-launch      "2.7.0 (2026-01-21)")
+(define-obsolete-function-alias 'el-job-await   #'el-job-old-await       "2.7.0 (2026-01-21)")
+(define-obsolete-function-alias 'el-job-is-busy #'el-job-old-is-busy     "2.7.0 (2026-01-21)")
 
 
 ;;;; Mapcar-like entry-point
