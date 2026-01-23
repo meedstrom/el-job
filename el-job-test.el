@@ -21,8 +21,34 @@
 (require 'map)
 (require 'subr-x)
 (require 'cl-lib)
-(require 'el-job-old-child)
-(require 'el-job-old)
+(require 'el-job)
+
+(ert-deftest preserves-order-of-elements ()
+  (let ((nonsense '("foo" "bar" "baz"
+                    "qux" "quux" "quuux" "quuuux"
+                    "bazola" "ztesch"
+                    "foo" "bar" "thud" "grunt"
+                    "foo" "bar" "bletch"
+                    "foo" "bar" "fum"
+                    "fred" "jim" "sheila" "barney"
+                    "flarp"
+                    "xyzzy"
+                    "fnord"
+                    "zxc" "spqr" "wombat"
+                    "shme"
+                    "foo" "bar" "baz" "bongo"
+                    "spam" "eggs"
+                    "snork"
+                    "foo" "bar" "zot"
+                    "blarg" "wibble"
+                    "toto" "titi" "tata" "tutu"
+                    "pippo" "pluto" "paperino"
+                    "aap" "noot" "mies"
+                    "oogle" "foogle" "boogle"
+                    "zork" "gork" "bork")))
+    (equal (mapcar #'upcase nonsense)
+           (el-job-parallel-mapcar #'upcase nonsense))))
+
 
 (ert-deftest el-job-old--split-optimally ()
   ;; All benchmarks at zero

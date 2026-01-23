@@ -280,7 +280,8 @@ ID can also be passed to these helpers:
             ;; https://github.com/meedstrom/org-node/issues/75
             (( file-error )
              (el-job-ng-kill-keep-bufs id)
-             (el-job-ng--dbg 1 "Terminated because of: %S" err))))))))
+             (el-job-ng--dbg 1 "Terminated because of: %S" err)))
+          (setf process-outputs (nreverse process-outputs)))))))
 
 
 ;;; Code used by child processes
