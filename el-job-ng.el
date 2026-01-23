@@ -411,14 +411,14 @@ A typical TEST would check if something in the environment has changed."
 (defun el-job-ng-await-or-die (id max-secs &optional message)
   "Like `el-job-ng-await', but kill the job on timeout or any signal.
 Otherwise, a keyboard quit would let it continue in the background."
-  (condition-case signal
+  (condition-case sig
       (if (el-job-ng-await id max-secs message)
           t
         (el-job-ng-kill-keep-bufs id)
         nil)
     (t
      (el-job-ng-kill id)
-     (apply #'signal signal)
+     (signal (car sig) (cdr sig))
      nil)))
 
 (defun el-job-ng-ready-p (id)
@@ -427,7 +427,7 @@ Otherwise, a keyboard quit would let it continue in the background."
 
 (defun el-job-ng-busy-p (id)
   "Return list of busy processes for job ID, if any."
-  (seq-find #'process-live-p (el-job-ng-processes id)))
+  (seq-filter #'process-live-p (el-job-ng-processes id)))
 
 (defun el-job-ng-kill (id)
   "Kill processes for job ID and their buffers."
