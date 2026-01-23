@@ -213,11 +213,9 @@ ID can also be passed to these helpers:
   (setq id (or id (abs (random))))
   (let ((job (with-memoization (gethash id el-job-ng--jobs)
                (make-instance 'el-job-ng-job :id id))))
+    (el-job-ng-kill-keep-bufs id)
     (oset job callback callback)
     (with-slots (process-outputs stderr benchmarks do-bench) job
-      ;; Cancel any currently-running job with same ID
-      (while-let ((proc (car (pop process-outputs))))
-        (delete-process proc))
       ;; https://github.com/meedstrom/org-node/issues/98
       (with-temp-buffer
         (let* ((print-length nil)
@@ -446,8 +444,10 @@ Otherwise, a keyboard quit would let it continue in the background."
     (and job (oref job stderr))))
 
 (defun el-job-ng-processes (id)
+  "Get the list of process objects for ID, dead or alive."
   (let ((job (el-job-ng-get-job id)))
-    (and job (mapcar #'car (oref job process-outputs)))))
+    (and job (seq-filter #'processp
+                         (mapcar #'car (oref job process-outputs))))))
 
 (defun el-job-ng-get-job (id-or-process)
   (if (processp id-or-process)
