@@ -51,31 +51,33 @@ This exists for comparison and debugging.
 Arguments are the same as `el-job-ng-run' \(ID, INJECT-VARS, REQUIRE,
 EVAL, INPUTS, FUNCALL-PER-INPUT, CALLBACK)."
   (setq id (or id (abs (random))))
-  (let ((job (or (gethash id el-job-ng--jobs)
-                 (puthash id (el-job-ng--make-job :id id) el-job-ng--jobs))))
-    (el-job-ng--with job (.processes .outputs)
-      (dolist (proc .processes)
-        (delete-process proc))
-      (dolist (lib require)
-        (load (locate-library (symbol-name lib))))
-      (setf .outputs nil)
-      (let ((simple-child
-             (lambda ()
-               (dolist (form eval)
-                 (eval form t))
-               (let ((ctr 0))
-                 (while-let ((input (pop inputs)))
-                   (message "Running %s (%d)..." funcall-per-input (cl-incf ctr))
-                   (push (funcall funcall-per-input input inputs)
-                         .outputs))))))
-        (eval `(let ,(cl-loop for (var . val) in inject-vars
-                              if (listp val)
-                              collect `(,var ',val)
-                              else collect `(,var ,val))
-                 (funcall ,simple-child))
-              t)
-        (when callback
-          (funcall callback .outputs))))))
+  (let ((job (with-memoization (gethash id el-job-ng--jobs)
+               (el-job-ng-job :id id
+                              :benchmarks (make-hash-table :test 'equal)))))
+    (while-let ((proc (car (pop (oref job process-outputs)))))
+      (delete-process proc))
+    (dolist (lib require)
+      (if (stringp lib)
+          (load lib nil t)
+        (load (locate-library (symbol-name lib)) nil t)))
+    (let* ((outputs)
+           (simple-child
+            (lambda ()
+              (dolist (form eval)
+                (eval form t))
+              (let ((ctr 0))
+                (while-let ((input (pop inputs)))
+                  (message "Running %s (%d)..." funcall-per-input (cl-incf ctr))
+                  (push (funcall funcall-per-input input inputs)
+                        outputs))))))
+      (eval `(let ,(cl-loop for (var . val) in inject-vars
+                            if (listp val)
+                            collect `(,var ',val)
+                            else collect `(,var ,val))
+               (funcall ,simple-child))
+            t)
+      (when callback
+        (funcall callback outputs)))))
 
 (provide 'el-job-ng-debug)
 
