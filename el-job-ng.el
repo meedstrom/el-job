@@ -206,11 +206,11 @@ ID can also be passed to these helpers:
   (cl-loop for id being each hash-key of el-job-ng--jobs
            when (and (numberp id) (not (el-job-ng-busy-p id)))
            do (remhash id el-job-ng--jobs))
-
+  (setq id (or id (abs (random))))
   (setq inject-vars (append (el-job-ng-vars '(load-path
                                               native-comp-eln-load-path))
                             inject-vars))
-  (setq id (or id (abs (random))))
+
   (let ((job (with-memoization (gethash id el-job-ng--jobs)
                (make-instance 'el-job-ng-job :id id))))
     (el-job-ng-kill-keep-bufs id)
@@ -265,11 +265,11 @@ ID can also be passed to these helpers:
                   ;; case, and this buffer is easier to peek on during edebug.
                   (with-current-buffer (process-buffer proc)
                     (erase-buffer)
-                    (insert vars "\n"
-                            libs "\n"
-                            forms "\n"
-                            func "\n"
-                            (prin1-to-string (pop input-sets)) "\n")
+                    (insert vars "\n")
+                    (insert libs "\n")
+                    (insert forms "\n")
+                    (insert func "\n")
+                    (insert (prin1-to-string (pop input-sets)) "\n")
                     (process-send-region proc (point-min) (point-max))
                     (erase-buffer))))
             ;; https://github.com/meedstrom/org-node/issues/75
@@ -328,7 +328,7 @@ and run `el-job-ng--handle-finished-child'."
                        (format "el-job id:   %S" id)))
          (info+tip (concat info "\n"
                            (format "tip:         check the hidden buffer named (note leading space): \"%s\""
-                                   (buffer-name (el-job-ng-stderr id))))))
+                                   (buffer-name (oref job stderr))))))
     (cond ((or (eq (process-status proc) 'run)
                (equal event "killed\n")
                (equal event "deleted\n"))
@@ -456,15 +456,16 @@ Otherwise, a keyboard quit would let it continue in the background."
                return job)
     (gethash id-or-process el-job-ng--jobs)))
 
-(defun el-job-ng-vars (mixed-list &optional scope)
+(defun el-job-ng-vars (mixed-list &optional lexical)
   "Replace each symbol in MIXED-LIST with a cons cell \(SYMBOL . VALUE\).
-If SYMBOL is nil or not bound, it is dropped.
+If the symbol is not bound or is the symbol nil, it is dropped.
 Uses `symbol-value' to get VALUE.
-If an element of MIXED-LIST is already a cons cell, it is kept as-is."
+If an element of MIXED-LIST is already a cons cell, it is kept as-is.
+
+Argument LEXICAL is an experiment.  Do not rely on it."
   (cl-loop for var in mixed-list
            if (and var (symbolp var) (boundp var))
-           ;; REVIEW: Not sure about the scope thing
-           collect (cons var (if scope (eval var t) (symbol-value var)))
+           collect (cons var (if lexical (eval var t) (symbol-value var)))
            else collect var))
 
 (provide 'el-job-ng)
