@@ -57,6 +57,7 @@ to unlock this message."
   "Split LIST into up to N-SLICES sublists."
   (and list (seq-split list (ceiling (/ (length list) (float n-slices))))))
 
+(defvar el-job-ng--splitter-complaint nil)
 (defun el-job-ng--split-optimally (list n-slices benchmarks)
   "Split LIST into up to N-SLICES sublists.
 
@@ -81,7 +82,7 @@ In other words, this equals LIST:
            (items-and-durations
             (cl-loop for item in list
                      as benchmark = (gethash item benchmarks)
-                     collect (cons item (and benchmark (float-time benchmark)))
+                     collect (cons item benchmark)
                      if benchmark
                      do (progn
                           (cl-incf n-benchmarks)
@@ -100,26 +101,32 @@ In other words, this equals LIST:
            while items-and-durations
            as (item . dur) = (pop items-and-durations)
            do (progn
-                (when (and sublist dur (> dur max-per-slice))
-                  ;; An item exceeding max by itself must get a dedicated process,
-                  ;; because we will likely be still waiting on that process after
-                  ;; the rest have finished, even with the dedication!
+                (when (and sublist dur (time-less-p max-per-slice dur))
+                  ;; An item exceeding max by itself must get a dedicated
+                  ;; process, because we will likely be still waiting on that
+                  ;; process after the rest have finished.
+                  ;; That's common for power-law distributed things.
                   ;; So finish the current sublist early, it's worth it.
                   (push (nreverse sublist) sublists)
                   (setq sublist nil)
                   (setq sum 0))
                 (push item sublist)
-                (cl-incf sum (or dur dur-mean))
-                (when (> sum max-per-slice)
+                (setq sum (time-add sum (or dur dur-mean)))
+                (when (time-less-p max-per-slice sum)
                   (push (nreverse sublist) sublists)
                   (setq sublist nil)
                   (setq sum 0)))
            finally do (when sublist
                         (push (nreverse sublist) sublists)))
-          (when (> (length sublists) n-slices)
-            (fset #'el-job-ng--split-optimally #'el-job-ng--split-evenly)
-            (error "el-job: Internal error, degrading gracefully from now on"))
-          (nreverse sublists)))))))
+          (if (<= (length sublists) n-slices)
+              (nreverse sublists)
+            ;; It is possible to have e.g. `n-slices'==8, a million tiny items,
+            ;; and 9 items big enough to exceed `max-per-slice', giving us 10
+            ;; sublists in the best case, if not upwards to 20 depending on
+            ;; how those items are ordered.
+            ;; Just give up in this aberrant case.
+            (setq el-job-ng--splitter-complaint t)
+            (el-job-ng--split-evenly list n-slices))))))))
 
 (defun el-job-ng--locate-lib (name)
   "Try to find the full .eln or .elc filename for library NAME.
@@ -138,6 +145,7 @@ Unlike `locate-library', this can actually find the .eln."
   ((id              :initarg :id)
    (stderr          :initform nil)
    (callback        :initform nil)
+   (do-bench        :initform t)
    (process-outputs :initform nil)
    (benchmarks      :initform (make-hash-table :test 'equal))))
 
@@ -209,7 +217,7 @@ ID can also be passed to these helpers:
   (let ((job (with-memoization (gethash id el-job-ng--jobs)
                (make-instance 'el-job-ng-job :id id))))
     (oset job callback callback)
-    (with-slots (process-outputs benchmarks stderr) job
+    (with-slots (process-outputs stderr benchmarks do-bench) job
       ;; Cancel any currently-running job with same ID
       (while-let ((proc (car (pop process-outputs))))
         (delete-process proc))
@@ -227,9 +235,13 @@ ID can also be passed to these helpers:
                (forms (prin1-to-string eval))
                (func (prin1-to-string funcall-per-input))
                (input-sets
-                (el-job-ng--split-optimally inputs
-                                            el-job-ng-max-cores
-                                            benchmarks))
+                (prog1 (el-job-ng--split-optimally inputs
+                                                   el-job-ng-max-cores
+                                                   benchmarks)
+                  (when el-job-ng--splitter-complaint
+                    (setq el-job-ng--splitter-complaint nil)
+                    (setf do-bench nil)
+                    (clrhash benchmarks))))
                (n (length input-sets))
                ;; Ensure a local working directory.
                ;; https://github.com/meedstrom/org-node/issues/46
@@ -342,18 +354,18 @@ and run `el-job-ng--handle-finished-child'."
            (el-job-ng-kill-keep-bufs id)))))
 
 (defun el-job-ng--handle-finished-child (proc buf job)
-  (with-slots (id process-outputs callback benchmarks) job
+  (with-slots (id process-outputs callback benchmarks do-bench) job
     (with-current-buffer buf
       (unless (and (eobp) (> (point) 2) (eq (char-before) ?\n))
         (error "Process output looks incomplete or point moved"))
       (setcdr (assq proc process-outputs)
               (cl-loop for (input benchmark output) in (read (buffer-string))
-                       do (puthash input benchmark benchmarks)
-                       and collect output))
+                       when do-bench do (puthash input benchmark benchmarks)
+                       collect output))
       (setcar (assq proc process-outputs) nil)
       (when (= 0 el-job-ng--debug-level)
         (kill-buffer)))
-    ;; Last child
+    ;; True when this was the last child to finish.
     (when (and callback (cl-every #'null (mapcar #'car process-outputs)))
       (let ((outputs (prog1 (mapcan #'cdr process-outputs)
                        (setf process-outputs nil))))
