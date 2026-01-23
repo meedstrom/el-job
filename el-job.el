@@ -81,6 +81,55 @@
 
 (defvar el-jobs :obsolete)
 
+
+;;;; Mapcar-like entry-point
+
+(defvar el-job--synchronous-result nil)
+(defun el-job-parallel-mapcar (fn list &optional inject-vars)
+  "Apply FN to LIST like `mapcar' in one or more parallel processes.
+
+Function FN must be known in `load-history' to be defined in some file.
+The parallel processes inherit `load-path' and then load that file.
+
+Function FN must not depend on side effects from previous invocations of
+itself, because each process gets a different subset of LIST.
+
+Unlike the more general `el-job-ng-run', this is meant as a close
+drop-in for `mapcar'.  It behaves like a synchronous function by
+blocking execution until the processes are done, then returns the
+result to the caller.
+
+Quitting kills the processes, much like quitting would interrupt a
+synchronous function.
+
+INJECT-VARS as in `el-job-ng-run'.
+
+For convenience, INJECT-VARS can contain bare symbols instead of cons
+cells, because it is processed by `el-job-ng-vars'.
+
+N/B: A crucial difference from `mapcar' is the temporary loss of scope,
+since FN runs in external processes.
+That means FN will not see let-bindings, runtime variables and the like,
+that you might have meant to have in effect where
+`el-job-parallel-mapcar' is invoked.
+Nor can it mutate such variables for you -- the only way it can affect
+the current Emacs session is if the caller of
+`el-job-parallel-mapcar' does something with the return value."
+  (let* ((vars (el-job-ng-vars (cons '(el-job-ng--child-unary . t) inject-vars)))
+         (id (intern (format "parallel-mapcar.%S.%d" fn (sxhash vars)))))
+    (el-job-ng-run
+     :id id
+     :require (unless (subr-primitive-p (symbol-function fn)) ;; Emacs 28
+                (list (symbol-file fn 'defun t)))
+     :inject-vars vars
+     :funcall-per-input fn
+     :inputs list
+     :callback (lambda (outputs)
+                 (setq el-job--synchronous-result outputs)))
+    (unless (el-job-ng-await-or-die id 86400)
+      (error "el-job-ng-parallel-mapcar: Timed out (hung for 24 hours): %S" fn))
+    el-job--synchronous-result))
+
 (provide 'el-job)
 
 ;;; el-job.el ends here
