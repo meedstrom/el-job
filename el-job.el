@@ -85,6 +85,7 @@
 ;;;; Mapcar-like entry-point
 
 (defvar el-job--synchronous-result nil)
+;;;###autoload
 (defun el-job-parallel-mapcar (fn list &optional inject-vars)
   "Apply FN to LIST like `mapcar' in one or more parallel processes.
 

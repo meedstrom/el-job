@@ -41,14 +41,12 @@ if making too many processes, so capping it can help."
 
 ;;; Subroutines
 
-(define-obsolete-variable-alias 'el-job-ng--debug-lvl 'el-job-ng--debug-level "2.7.0 (2026-01-21)")
 (defvar el-job-ng--debug-level 0
   "Increase this to 1 or 2 to see more debug messages.")
 
 (defun el-job-ng--dbg (level fmt &rest args)
   "Maybe pass FMT and ARGS to `message'.
-LEVEL is the threshold that `el-job-ng--debug-level' should meet or exceed
-to unlock this message."
+LEVEL is the threshold for `el-job-ng--debug-level'."
   (declare (indent 1))
   (when (<= level el-job-ng--debug-level)
     (apply #'message (concat "el-job-ng: " fmt) args)))
@@ -65,6 +63,8 @@ If possible, use table BENCHMARKS to balance the sublists.
 This reduces the risk that one sublist acquires all the heaviest items
 from LIST, as that can make it an extreme outlier in terms of
 wall-time needed to work through it.
+It happens more often than you would think, and nullifies much of
+the gain of el-job.
 
 The order of elements in LIST is preserved across the sublists.
 In other words, this equals LIST:
@@ -140,7 +140,7 @@ Unlike `locate-library', this can actually find the .eln."
 
 ;;; Entry point
 
-(defvar el-job-ng--jobs (make-hash-table :test #'eq))
+(defvar el-job-ng--jobs (make-hash-table :test 'eq))
 (defclass el-job-ng-job ()
   ((id              :initarg :id)
    (stderr          :initform nil)
@@ -202,6 +202,7 @@ ID can also be passed to these helpers:
     (error "INPUTS must be a non-empty list"))
   (when (numberp id)
     (error "Numeric ID is reserved for internal use"))
+  ;; HACK FIXME
   (cl-loop for (var . val) in inject-vars
            when (string-prefix-p "#" (readablep val))
            do (error "Cannot inject variable `%s' with value: %s" var val))
