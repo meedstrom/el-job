@@ -202,10 +202,6 @@ ID can also be passed to these helpers:
     (error "INPUTS must be a non-empty list"))
   (when (numberp id)
     (error "Numeric ID is reserved for internal use"))
-  ;; HACK FIXME
-  (cl-loop for (var . val) in inject-vars
-           when (string-prefix-p "#" (readablep val))
-           do (error "Cannot inject variable `%s' with value: %s" var val))
   ;; Clean-up defunct anonymous jobs
   (cl-loop for id being each hash-key of el-job-ng--jobs
            when (and (numberp id) (not (el-job-ng-busy-p id)))
