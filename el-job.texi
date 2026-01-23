@@ -40,13 +40,23 @@ That's it in a nutshell.  You can look at real-world usage by searching for "el-
 @end ifnottex
 
 @menu
-* Since 2.5.0: Since 250. 
+* 2.7.0: 270. 
+* 2.6.0: 260. 
+* 2.5.0: 250. 
 * README for 2.4.8: README for 248. 
 
 @detailmenu
 --- The Detailed Node Listing ---
 
-Since 2.5.0
+2.7.0
+
+* New entry point @samp{el-job-parallel-mapcar}::
+
+New entry point: @samp{el-job-parallel-mapcar}
+
+* Weaknesses::
+
+2.5.0
 
 * Future work::
 
@@ -69,10 +79,104 @@ Design rationale
 @end detailmenu
 @end menu
 
-@node Since 250
-@chapter Since 2.5.0
+@node 270
+@chapter 2.7.0
 
-Released @emph{<2025-Oct-06>}@comma{} v2.5.0 comes with a variant library "el-job-ng".
+@itemize
+@item
+New entry point: @samp{el-job-parallel-mapcar}! Read more below.
+@item
+Argument @samp{:inputs} are now split differently@comma{} for the sake of a predictable order of outputs.  It is likely less optimal@comma{} but hopefully not too much.
+@item
+Argument @samp{:require} now accepts strings in addition to symbols.  Strings are passed to @samp{load} instead of @samp{require}.
+@item
+Value of @samp{temporary-file-directory} no longer added to @samp{:inject-vars} for you.
+@itemize
+@item
+Now the only values added are @samp{load-path} and @samp{native-comp-eln-load-path}.
+@end itemize
+@item
+Function @samp{el-job-ng-job} renamed to @samp{el-job-ng-get-job}.
+@itemize
+@item
+New class @samp{el-job-ng-job}.
+@end itemize
+@item
+Delete many aliases to el-job-old.el.
+@end itemize
+
+@menu
+* New entry point @samp{el-job-parallel-mapcar}::
+@end menu
+
+@node New entry point @samp{el-job-parallel-mapcar}
+@section New entry point: @samp{el-job-parallel-mapcar}
+
+Until now@comma{} we had to make do with an unwieldy @samp{el-job-ng-run} with ~5 keyword arguments.  And we had to understand asynchronous programming to use it.
+
+I've long dreamed to be able to brainlessly rewrite a form @samp{(mapcar #'FN INPUTS)} to something like @samp{(multicore-mapcar #'FN INPUTS)} and have it Just Work and Just Be Faster.
+
+Finally@comma{} it is done!
+
+The calling convention is
+
+@example
+(el-job-parallel-mapcar FN INPUTS &optional INJECT-VARS)
+@end example
+
+Please see the docstring for what you need to know.
+
+@menu
+* Weaknesses::
+@end menu
+
+@node Weaknesses
+@subsection Weaknesses
+
+Do not use @samp{el-job-parallel-mapcar} with overly trivial functions.  It adds some overhead per item@comma{} so it actually slows you down if the function itself only takes microseconds or nanoseconds per invocation.
+
+Example of a bad use-case:
+
+@lisp
+(let ((spam (make-list 1000000 "spam")))
+  (list (benchmark-elapse (mapcar #'upcase spam))
+        (benchmark-elapse (el-job-parallel-mapcar #'upcase spam))))
+@end lisp
+
+Return value:
+
+@example
+(0.482017027 4.793430311)
+@end example
+
+Another bad use-case is when plain @samp{mapcar} would've been fast enough.  There is some constant overhead related to spinning up subprocesses.
+
+Changing 1000000 from the earlier expression to just 100 reveals the constant to be ~210ms on my machine:
+
+@lisp
+(let ((spam (make-list 100 "spam")))
+  (list (benchmark-elapse (mapcar #'upcase spam))
+        (benchmark-elapse (el-job-parallel-mapcar #'upcase spam))))
+@end lisp
+
+Return value:
+
+@example
+(0.000041974 0.219570936)
+@end example
+
+@node 260
+@chapter 2.6.0
+
+@itemize
+@item
+For  @samp{el-job-old-launch}@comma{} new argument @samp{:eval}
+@end itemize
+
+@node 250
+@chapter 2.5.0
+
+Released @emph{[2025-10-06 Mon]}@comma{} v2.5.0 comes with a variant library "el-job-ng".
 
 I find it simpler and easier to reason about.  400 lines of code instead of 800.
 
@@ -108,7 +212,7 @@ I may write yet another variant.
 
 Something that came with experience is that it's best to make a new variant library for a narrow use-case@comma{} rather than complicate one library with different code flows.  When it comes to this type of library@comma{} you really want to keep it easy to reason about!
 
-Ideas as of @emph{<2025-Oct-06>}:
+Ideas as of @emph{[2025-10-06 Mon]}:
 
 @table @asis
 @item File IPC

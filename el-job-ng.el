@@ -39,7 +39,7 @@ if making too many processes, so capping it can help."
   :group 'processes)
 
 
-;;; Subroutines
+;;;; Subroutines
 
 (defvar el-job-ng--debug-level 0
   "Increase this to 1 or 2 to see more debug messages.")
@@ -138,7 +138,7 @@ Unlike `locate-library', this can actually find the .eln."
         (error "el-job-ng: Library not found: %S" name))))
 
 
-;;; Entry point
+;;;; Entry point
 
 (defvar el-job-ng--jobs (make-hash-table :test 'eq))
 (defclass el-job-ng-job ()
@@ -172,22 +172,26 @@ At a glance:
    that to CALLBACK, a function called precisely once.
    In other words, CALLBACK should be expected to receive one list that
    is equal in length to INPUTS.
+   Also, the order of values is preserved.
 
 Details:
 - INJECT-VARS is an alist of symbols and values to pass to `set'.
   It has some default members, including `load-path'.
-- REQUIRE is a list of symbols for `require' or strings for `load'.
+- REQUIRE is a list of symbols for `require', or strings for `load'.
 - EVAL is a list of quoted forms.
 - FUNCALL-PER-INPUT must be a symbol with a function definition,
   not an anonymous lambda.
+  That definition must be discoverable via `load-path' or REQUIRE.
   It is passed two arguments: the current item, and the remaining items.
   \(You probably will not need the second argument.\)
 
 Finally, ID is an optional symbol.  Passing an ID has two effects:
 - Automatically cancel a running job with the same ID, before starting.
 - Use benchmarks from previous runs to better balance the INPUTS split.
+  See `el-job-ng--split-optimally'.
 
 ID can also be passed to these helpers:
+- `el-job-ng-get-job'
 - `el-job-ng-await'
 - `el-job-ng-await-or-die'
 - `el-job-ng-ready-p'
@@ -279,10 +283,12 @@ ID can also be passed to these helpers:
           (setf process-outputs (nreverse process-outputs)))))))
 
 
-;;; Code used by child processes
+;;;; Code used by child processes
 
 (defvar el-job-ng--child-args 2)
 (defun el-job-ng--child-work ()
+  "Read a few lines from stdin, then work according to that info.
+Finally print to stdout and die."
   (let* ((coding-system-for-write 'utf-8-emacs-unix)
          (coding-system-for-read  'utf-8-emacs-unix)
          (vars   (read-from-minibuffer "" nil nil t))
@@ -310,7 +316,7 @@ ID can also be passed to these helpers:
       (print (nreverse benchmarked-outputs)))))
 
 
-;;; Sentinel; receiving what the child printed
+;;;; Sentinel; receiving what the child printed
 
 (defun el-job-ng--sentinel (proc event)
   "Handle changed state of a child process.
@@ -350,6 +356,10 @@ and run `el-job-ng--handle-finished-child'."
            (el-job-ng-kill-keep-bufs id)))))
 
 (defun el-job-ng--handle-finished-child (proc buf job)
+  "Handle output returned by PROC, presuming that is in buffer BUF.
+Then kill BUF.
+Once this has handled all outputs for JOB, run the CALLBACK function
+specified in `el-job-ng-run'."
   (with-slots (id process-outputs callback benchmarks do-bench) job
     (with-current-buffer buf
       (unless (and (eobp) (> (point) 2) (eq (char-before) ?\n))
@@ -371,7 +381,7 @@ and run `el-job-ng--handle-finished-child'."
           (el-job-ng--dbg 0 "Quit while executing :callback for %s" id))))))
 
 
-;;; API
+;;;; API
 
 (defmacro el-job-ng-sit-until (test max-secs &optional message)
   "Block until form TEST evaluates to non-nil, or MAX-SECS elapse.
@@ -399,12 +409,14 @@ A typical TEST would check if something in the environment has changed."
        ,last)))
 
 (defun el-job-ng-await (id max-secs &optional message)
-  "Like `el-job-ng-sit-until' but take ID and return t if job finishes."
+  "Like `el-job-ng-sit-until' but take ID and return t if job finishes.
+MAX-SECS and MESSAGE as in `el-job-ng-sit-until'."
   (el-job-ng-sit-until (el-job-ng-ready-p id) max-secs message))
 
 (defun el-job-ng-await-or-die (id max-secs &optional message)
   "Like `el-job-ng-await', but kill the job on timeout or any signal.
-Otherwise, a keyboard quit would let it continue in the background."
+Otherwise, a keyboard quit would let it continue in the background.
+ID, MAX-SECS and MESSAGE as in `el-job-ng-await'."
   (condition-case sig
       (if (el-job-ng-await id max-secs message)
           t
@@ -440,6 +452,7 @@ Otherwise, a keyboard quit would let it continue in the background."
     (delete-process proc)))
 
 (defun el-job-ng-stderr (id)
+  "Get the stderr buffer for ID."
   (let ((job (el-job-ng-get-job id)))
     (and job (oref job stderr))))
 
@@ -450,6 +463,7 @@ Otherwise, a keyboard quit would let it continue in the background."
                          (mapcar #'car (oref job process-outputs))))))
 
 (defun el-job-ng-get-job (id-or-process)
+  "Get the job object associated with ID-OR-PROCESS."
   (if (processp id-or-process)
       (cl-loop for job being each hash-value of el-job-ng--jobs
                when (assq id-or-process (oref job process-outputs))

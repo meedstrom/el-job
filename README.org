@@ -19,7 +19,63 @@ That's it in a nutshell.  You can look at real-world usage by searching for "el-
 - [[https://raw.githubusercontent.com/meedstrom/org-mem/refs/heads/main/org-mem.el][org-mem.el]]
 - [[https://raw.githubusercontent.com/meedstrom/org-roam-async/refs/heads/main/org-roam-async.el][org-roam-async.el]]
 
-* Since 2.5.0
+* 2.7.0
+- New entry point: =el-job-parallel-mapcar=! Read more below.
+- Argument =:inputs= are now split differently, for the sake of a predictable order of outputs.  It is likely less optimal, but hopefully not too much.
+- Argument =:require= now accepts strings in addition to symbols.  Strings are passed to =load= instead of =require=.
+- Value of =temporary-file-directory= no longer added to =:inject-vars= for you.
+  - Now the only values added are =load-path= and =native-comp-eln-load-path=.
+- Function =el-job-ng-job= renamed to =el-job-ng-get-job=.
+  - New class =el-job-ng-job=.
+- Delete many aliases to el-job-old.el.
+
+** New entry point: =el-job-parallel-mapcar=
+Until now, we had to make do with an unwieldy =el-job-ng-run= with ~5 keyword arguments.  And we had to understand asynchronous programming to use it.
+
+I've long dreamed to be able to brainlessly rewrite a form =(mapcar #'FN INPUTS)= to something like =(multicore-mapcar #'FN INPUTS)= and have it Just Work and Just Be Faster.
+
+Finally, it is done!
+
+The calling convention is
+
+: (el-job-parallel-mapcar FN INPUTS &optional INJECT-VARS)
+
+Please see the docstring for what you need to know.
+
+*** Weaknesses
+Do not use =el-job-parallel-mapcar= with overly trivial functions.  It adds some overhead per item, so it actually slows you down if the function itself only takes microseconds or nanoseconds per invocation.
+
+Example of a bad use-case:
+
+#+BEGIN_SRC elisp
+(let ((spam (make-list 1000000 "spam")))
+  (list (benchmark-elapse (mapcar #'upcase spam))
+        (benchmark-elapse (el-job-parallel-mapcar #'upcase spam))))
+#+END_SRC
+
+Return value:
+
+: (0.482017027 4.793430311)
+
+Another bad use-case is when plain =mapcar= would've been fast enough.  There is some constant overhead related to spinning up subprocesses.
+
+Changing 1000000 from the earlier expression to just 100 reveals the constant to be ~210ms on my machine:
+
+#+BEGIN_SRC elisp
+(let ((spam (make-list 100 "spam")))
+  (list (benchmark-elapse (mapcar #'upcase spam))
+        (benchmark-elapse (el-job-parallel-mapcar #'upcase spam))))
+#+END_SRC
+
+Return value:
+
+: (0.000041974 0.219570936)
+
+* 2.6.0
+
+- For  =el-job-old-launch=, new argument =:eval=
+
+* 2.5.0
 
 Released [2025-10-06 Mon], v2.5.0 comes with a variant library "el-job-ng".
 

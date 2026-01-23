@@ -53,10 +53,11 @@
   "Apply FN to LIST like `mapcar' in one or more parallel processes.
 
 Function FN must be known in `load-history' to be defined in some file.
-The parallel processes inherit `load-path' and then load that file.
+At spin-up, the parallel processes inherit `load-path', then load that
+file \(even if it is not on `load-path'\), and then get to work.
 
-Function FN must not depend on side effects from previous invocations of
-itself, because each process gets a different subset of LIST.
+Function FN should not depend on side effects from previous invocations
+of itself, because each process gets a different subset of LIST.
 
 Unlike the more general `el-job-ng-run', this is meant as a close
 drop-in for `mapcar'.  It behaves like a synchronous function by
@@ -76,9 +77,12 @@ since FN runs in external processes.
 That means FN will not see let-bindings, runtime variables and the like,
 that you might have meant to have in effect where
 `el-job-parallel-mapcar' is invoked.
-Nor can it mutate such variables for you -- the only way it can affect
-the current Emacs session is if the caller of
-`el-job-parallel-mapcar' does something with the return value."
+That is why you may need INJECT-VARS.
+
+N/B: The aforementioned loss of scope also means that FN cannot set or
+mutate any variables for you -- the only way it can affect the current
+Emacs session is if the caller of `el-job-parallel-mapcar' does
+something with the return value."
   (let* (result
          (vars (el-job-ng-vars (cons '(el-job-ng--child-args . 1) inject-vars)))
          (id (intern (format "parallel-mapcar.%S.%d" fn (sxhash vars)))))
