@@ -47,10 +47,7 @@
 (define-obsolete-function-alias 'el-job-await   #'el-job-old-await       "2.7.0 (2026-01-21)")
 (define-obsolete-function-alias 'el-job-is-busy #'el-job-old-is-busy     "2.7.0 (2026-01-21)")
 
-
-;;;; Mapcar-like entry-point
-
-(defvar el-job--synchronous-result nil)
+;; FIXME: It seems to print the nil message during work
 ;;;###autoload
 (defun el-job-parallel-mapcar (fn list &optional inject-vars)
   "Apply FN to LIST like `mapcar' in one or more parallel processes.
@@ -82,7 +79,8 @@ that you might have meant to have in effect where
 Nor can it mutate such variables for you -- the only way it can affect
 the current Emacs session is if the caller of
 `el-job-parallel-mapcar' does something with the return value."
-  (let* ((vars (el-job-ng-vars (cons '(el-job-ng--child-unary . t) inject-vars)))
+  (let* (result
+         (vars (el-job-ng-vars (cons '(el-job-ng--child-args . 1) inject-vars)))
          (id (intern (format "parallel-mapcar.%S.%d" fn (sxhash vars)))))
     (el-job-ng-run
      :id id
@@ -92,10 +90,10 @@ the current Emacs session is if the caller of
      :funcall-per-input fn
      :inputs list
      :callback (lambda (outputs)
-                 (setq el-job--synchronous-result outputs)))
+                 (setq result outputs)))
     (unless (el-job-ng-await-or-die id 86400)
       (error "el-job-ng-parallel-mapcar: Timed out (hung for 24 hours): %S" fn))
-    el-job--synchronous-result))
+    result))
 
 (provide 'el-job)
 

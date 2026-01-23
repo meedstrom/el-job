@@ -287,7 +287,7 @@ ID can also be passed to these helpers:
 
 ;;; Code used by child processes
 
-(defvar el-job-ng--child-unary nil)
+(defvar el-job-ng--child-args 2)
 (defun el-job-ng--child-work ()
   (let* ((coding-system-for-write 'utf-8-emacs-unix)
          (coding-system-for-read  'utf-8-emacs-unix)
@@ -306,7 +306,7 @@ ID can also be passed to these helpers:
       (eval form t))
     (while-let ((input (pop inputs)))
       (let ((start (current-time))
-            (output (if el-job-ng--child-unary
+            (output (if (eq el-job-ng--child-args 1)
                         (funcall func input)
                       (funcall func input inputs))))
         (push (list input (time-since start) output) benchmarked-outputs)))
