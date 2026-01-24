@@ -480,7 +480,7 @@ Argument LEXICAL is an experiment.  Do not rely on it."
   (cl-loop for var in mixed-list
            if (and var (symbolp var) (boundp var))
            collect (cons var (if lexical (eval var t) (symbol-value var)))
-           else collect var))
+           else if (consp var) collect var))
 
 (provide 'el-job-ng)
 
