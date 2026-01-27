@@ -163,6 +163,28 @@ Unlike `locate-library', this can actually find the .eln."
         (locate-library name)
         (error "el-job-ng: Library not found: %S" name))))
 
+(defvar el-job-ng--supported nil)
+(defun el-job-ng--supported-p ()
+  "Return t if Emacs can create processes successfully."
+  (with-memoization el-job-ng--supported
+    (let ((default-directory invocation-directory)
+          (emacs (expand-file-name invocation-name invocation-directory))
+          sentinel-invoked supported)
+      (with-local-quit ;; "Blocking call to accept-process-output with quit inhibited!! [7 times]"
+        (accept-process-output
+         (make-process :name "el-job-init-test"
+                       :connection-type 'pipe
+                       :command (list emacs "--quick" "--batch")
+                       :sentinel (lambda (proc _)
+                                   (setq sentinel-invoked t)
+                                   (when (and (processp proc)
+                                              (eq (process-status proc) 'exit)
+                                              (eq (process-exit-status proc) 0))
+                                     (setq supported t))))
+         nil nil t)
+        (el-job-ng-sit-until sentinel-invoked 20)
+        supported))))
+
 
 ;;;; Entry point
 
@@ -381,6 +403,12 @@ and run `el-job-ng--handle-finished-child'."
            ;; may run the user-provided callback which should be free to do
            ;; whatever to the window configuration.
            (el-job-ng--handle-finished-child proc buf job))
+
+          ;; "exited abnormally with code 1\n"
+          ;; https://github.com/meedstrom/org-node/issues/96#issuecomment-2887497938
+          ((not (el-job-ng--supported-p))
+           (el-job-ng-kill-keep-bufs id)
+           (error "Emacs seems unable to create processes, so el-job will not work"))
 
           (t
            (el-job-ng--dbg 0 "%s" info+tip)
