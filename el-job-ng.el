@@ -444,6 +444,7 @@ ID, MAX-SECS and MESSAGE as in `el-job-ng-await'."
 (defun el-job-ng-kill (id)
   "Kill processes for job ID and their buffers."
   (dolist (proc (el-job-ng-processes id))
+    (set-process-sentinel proc #'ignore)
     (let ((buf (process-buffer proc)))
       (if (buffer-live-p buf)
           (kill-buffer buf)
@@ -455,6 +456,7 @@ ID, MAX-SECS and MESSAGE as in `el-job-ng-await'."
 (defun el-job-ng-kill-keep-bufs (id)
   "Kill processes for job ID."
   (dolist (proc (el-job-ng-processes id))
+    (set-process-sentinel proc #'ignore)
     (delete-process proc)))
 
 (defun el-job-ng-stderr (id)
