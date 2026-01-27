@@ -39,15 +39,9 @@
 
 ;;; Code:
 
-(defconst el-job-internal-version 104)
-
 (require 'el-job-ng)
 
-(define-obsolete-variable-alias 'el-job-max-cores 'el-job-old-max-cores  "2.7.0 (2026-01-23)")
-(require 'el-job-old)
-(define-obsolete-function-alias 'el-job-launch  #'el-job-old-launch      "2.7.0 (2026-01-23)")
-(define-obsolete-function-alias 'el-job-await   #'el-job-old-await       "2.7.0 (2026-01-23)")
-(define-obsolete-function-alias 'el-job-is-busy #'el-job-old-is-busy     "2.7.0 (2026-01-23)")
+(defconst el-job-internal-version 105)
 
 ;; FIXME: It seems to print the nil message during work
 ;;;###autoload

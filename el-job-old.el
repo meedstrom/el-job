@@ -839,6 +839,13 @@ Safely return nil otherwise, whether or not ID is known."
   (let ((job (gethash id el-job-old--all-jobs)))
     (and job (el-job-old-busy job))))
 
+;;;###autoload
+(define-obsolete-function-alias 'el-job-launch  #'el-job-old-launch      "2.7.0 (2026-01-23)")
+;;;###autoload
+(define-obsolete-function-alias 'el-job-await   #'el-job-old-await       "2.7.0 (2026-01-23)")
+;;;###autoload
+(define-obsolete-function-alias 'el-job-is-busy #'el-job-old-is-busy     "2.7.0 (2026-01-23)")
+
 (provide 'el-job-old)
 
 ;;; el-job-old.el ends here
