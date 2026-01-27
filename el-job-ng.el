@@ -326,7 +326,7 @@ assume the process buffer contains a readable Lisp expression
 and run `el-job-ng--handle-finished-child'."
   (let* ((buf (process-buffer proc))
          (job (el-job-ng-get-job proc))
-         (id (oref job id))
+         (id (and job (oref job id)))
          (info (concat (format "Process %s" event) ;; EVENT contains "\n"
                        (format "status:      %S\n" (process-status proc))
                        (format "exit status: %d\n" (process-exit-status proc))
@@ -334,8 +334,13 @@ and run `el-job-ng--handle-finished-child'."
                        (format "el-job id:   %S" id)))
          (info+tip (concat info "\n"
                            (format "tip:         check the hidden buffer named (note leading space): \"%s\""
-                                   (buffer-name (oref job stderr))))))
-    (cond ((or (eq (process-status proc) 'run)
+                                   (buffer-name (and job (oref job stderr)))))))
+    (cond ((not job)
+           (el-job-ng--dbg 0 "Could not find job associated with process %S%s"
+                           proc
+                           ", did something kill the process buffer before sentinel could be called?"))
+
+          ((or (eq (process-status proc) 'run)
                (equal event "killed\n")
                (equal event "deleted\n"))
            ;; Situation normal, often arrive here due to `delete-process'.
