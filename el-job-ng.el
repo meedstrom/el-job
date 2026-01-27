@@ -41,6 +41,32 @@ if making too many processes, so capping it can help."
 
 ;;;; Subroutines
 
+(defalias 'el-job-ng--sit-until 'el-job-ng-sit-until)
+(defmacro el-job-ng-sit-until (test max-secs &optional message)
+  "Block until form TEST evaluates to non-nil, or MAX-SECS elapse.
+Either way, return the last TEST result.
+In other words, a nil return value means it has timed out.
+
+While blocking input to Emacs, keep MESSAGE visible in the echo area.
+MESSAGE can be a string, or a form that evaluates to a string.
+
+Both TEST and MESSAGE should be cheap forms, since they are evaluated
+repeatedly and cannot themselves trigger the time-out if they hang.
+A typical TEST would check if something in the environment has changed."
+  (let ((deadline (gensym "deadline"))
+        (last (gensym "last")))
+    `(let ((,deadline (time-add (current-time) ,max-secs))
+           ,last)
+       (catch 'timeout
+         (while (null (setq ,last ,test))
+           (when (time-less-p ,deadline (current-time))
+             (throw 'timeout nil))
+           ,(when message `(unless (current-message)
+                             (message "%s" ,message)))
+           (discard-input)
+           (sit-for 0.1)))
+       ,last)))
+
 (defvar el-job-ng--debug-level 0
   "Increase this to 1 or 2 to see more debug messages.")
 
@@ -387,31 +413,6 @@ specified in `el-job-ng-run'."
 
 
 ;;;; API
-
-(defmacro el-job-ng-sit-until (test max-secs &optional message)
-  "Block until form TEST evaluates to non-nil, or MAX-SECS elapse.
-Either way, return the last TEST result.
-In other words, a nil return value means it has timed out.
-
-While blocking input to Emacs, keep MESSAGE visible in the echo area.
-MESSAGE can be a string, or a form that evaluates to a string.
-
-Both TEST and MESSAGE should be cheap forms, since they are evaluated
-repeatedly and cannot themselves trigger the time-out if they hang.
-A typical TEST would check if something in the environment has changed."
-  (let ((deadline (gensym "deadline"))
-        (last (gensym "last")))
-    `(let ((,deadline (time-add (current-time) ,max-secs))
-           ,last)
-       (catch 'timeout
-         (while (null (setq ,last ,test))
-           (when (time-less-p ,deadline (current-time))
-             (throw 'timeout nil))
-           ,(when message `(unless (current-message)
-                             (message "%s" ,message)))
-           (discard-input)
-           (sit-for 0.1)))
-       ,last)))
 
 (defun el-job-ng-await (id max-secs &optional message)
   "Like `el-job-ng-sit-until' but take ID and return t if job finishes.
