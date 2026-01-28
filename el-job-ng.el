@@ -248,10 +248,10 @@ ID can also be passed to these helpers:
 - `el-job-ng-kill-keep-bufs'
 - `el-job-ng-processes'
 - `el-job-ng-stderr'"
+  (when (null inputs)
+    (cl-return-from el-job-ng-run))
   (unless (symbolp funcall-per-input)
     (error "FUNCALL-PER-INPUT must be defined in some file loaded via REQUIRE"))
-  (unless (and inputs (listp inputs))
-    (error "INPUTS must be a non-empty list"))
   (when (numberp id)
     (error "Numeric ID is reserved for internal use"))
   ;; Clean-up defunct anonymous jobs
