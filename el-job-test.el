@@ -22,6 +22,7 @@
 (require 'subr-x)
 (require 'cl-lib)
 (require 'el-job)
+(require 'el-job-old)
 
 ;; NOTE: This does not work in test suite, so test this manually!
 (defun test-it-preserves-order-of-elements ()
