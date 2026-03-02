@@ -41,6 +41,7 @@ if making too many processes, so capping it can help."
 
 ;;;; Subroutines
 
+;; FIXME: MESSAGE can't be a form apparently
 (defalias 'el-job-ng--sit-until 'el-job-ng-sit-until)
 (defmacro el-job-ng-sit-until (test max-secs &optional message)
   "Block until form TEST evaluates to non-nil, or MAX-SECS elapse.
@@ -275,8 +276,8 @@ ID can also be passed to these helpers:
                (print-circle t)
                (print-escape-newlines t)
                ;; https://github.com/jwiegley/emacs-async/issues/165
-               (coding-system-for-write 'utf-8-emacs-unix)
-               (coding-system-for-read 'utf-8-emacs-unix)
+               (coding-system-for-write 'emacs-internal)
+               (coding-system-for-read 'emacs-internal)
                (vars (prin1-to-string inject-vars))
                (libs (prin1-to-string require))
                (forms (prin1-to-string eval))
@@ -337,7 +338,7 @@ ID can also be passed to these helpers:
 (defun el-job-ng--child-work ()
   "Read a few lines from stdin, then work according to that info.
 Finally print to stdout and die."
-  (let* ((coding-system-for-read  'utf-8-emacs-unix)
+  (let* ((coding-system-for-read  'emacs-internal)
          (vars   (read-from-minibuffer "" nil nil t))
          (libs   (read-from-minibuffer "" nil nil t))
          (forms  (read-from-minibuffer "" nil nil t))
@@ -354,14 +355,14 @@ Finally print to stdout and die."
       (eval form t))
     (while-let ((input (pop inputs)))
       (let ((start (current-time))
-            (output (if (eq el-job-ng--child-args 1)
+            (output (if (= 1 el-job-ng--child-args)
                         (funcall func input)
                       (funcall func input inputs))))
         (push (list input (time-since start) output) benchmarked-outputs)))
     (let ((print-length nil)
           (print-level nil)
           (print-circle t)
-          (coding-system-for-write 'utf-8-emacs-unix))
+          (coding-system-for-write 'emacs-internal))
       (print (nreverse benchmarked-outputs)))))
 
 
@@ -426,8 +427,8 @@ specified by `el-job-ng-run'."
         (error "Process output looks incomplete or point moved"))
       (setcdr (assq proc process-outputs)
               (cl-loop for (input benchmark output) in (read (buffer-string))
-                       when do-bench do (puthash input benchmark benchmarks)
-                       collect output))
+                       collect output
+                       when do-bench do (puthash input benchmark benchmarks)))
       (setcar (assq proc process-outputs) nil)
       (when (= 0 el-job-ng--debug-level)
         (kill-buffer)))

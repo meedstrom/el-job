@@ -2,6 +2,13 @@
 
 ;; Copyright (C) 2024-2026 Free Software Foundation, Inc.
 
+;; Author:           Martin Edström <meedstrom@runbox.eu>
+;; URL:              https://github.com/meedstrom/el-job
+;; Created:          2024-10-30
+;; Keywords:         processes
+;; Package-Version:  2.7.3
+;; Package-Requires: ((emacs "29.1"))
+
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
@@ -14,13 +21,6 @@
 
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program. If not, see <http://www.gnu.org/licenses/>.
-
-;; Author:           Martin Edström <meedstrom@runbox.eu>
-;; URL:              https://github.com/meedstrom/el-job
-;; Created:          2024-10-30
-;; Keywords:         processes
-;; Package-Version:  2.7.3
-;; Package-Requires: ((emacs "29.1"))
 
 ;;; Commentary:
 
