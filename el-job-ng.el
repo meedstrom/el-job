@@ -29,10 +29,9 @@
 ;; https://github.com/meedstrom/el-job/pull/5
 ;; https://github.com/emacs-mirror/emacs/commit/e02466a579a58fceda33ad51d822e39543bc883c
 (defcustom el-job-ng-max-cores
-  (max 1 (- (if (eq system-type 'windows-nt)
-                (/ (min 32 (num-processors)) 2)
-              (num-processors))
-            1))
+  (max 1 (if (eq system-type 'windows-nt)
+             (min (- (num-processors) 1) 16)
+           (- (num-processors) 1)))
   "A limit on the number of subprocesses for one job.
 Windows can get \"error: Could not create child process\"
 if making too many processes, so capping it can help."
