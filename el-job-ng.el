@@ -27,9 +27,10 @@
 (require 'eieio)
 
 ;; https://github.com/meedstrom/el-job/pull/5
+;; https://github.com/emacs-mirror/emacs/commit/e02466a579a58fceda33ad51d822e39543bc883c
 (defcustom el-job-ng-max-cores
   (max 1 (- (if (eq system-type 'windows-nt)
-                (/ (num-processors) 2)
+                (/ (min 32 (num-processors)) 2)
               (num-processors))
             1))
   "A limit on the number of subprocesses for one job.
